@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1170 590" width="1170" height="590" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">AppleGPU compilation pipeline</title>
+  <desc id="desc">Triton (TTIR in generic text form) and standard MLIR are lowered by applegpu-opt into the gpu, applegpu and standard dialects. applegpu-translate emits MSL, which the Metal toolchain compiles to AIR and a metallib that runs on the GPU. Later, an AIR lowering pass in applegpu-opt produces the LLVM dialect with AIR intrinsics, and an AIR emitter serializes it to .air.</desc>
+  <style>
+    .bg     { fill: #ffffff; }
+    .group  { fill: #f6f8fa; stroke: #d0d7de; }
+    .box    { fill: #ffffff; stroke: #57606a; }
+    .later  { fill: #ffffff; stroke: #8c959f; stroke-dasharray: 6 4; }
+    .title  { fill: #1f2328; font-size: 15px; font-weight: 600; }
+    .label  { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .note   { fill: #59636e; font-size: 12px; }
+    .small  { font-size: 11px; }
+    .muted  { fill: #6e7781; }
+    .mono   { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .edge   { stroke: #57606a; stroke-width: 1.6; fill: none; }
+    .edge-later { stroke: #8c959f; stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+    .head   { fill: #57606a; }
+    .head-later { fill: #8c959f; }
+    .fe     { fill: #fbefff; stroke: #8250df; }
+    .opt    { fill: #ddf4ff; stroke: #0969da; }
+    .tr     { fill: #dafbe1; stroke: #1a7f37; }
+    .mtl    { fill: #fff1e5; stroke: #bc4c00; }
+    .t-fe   { fill: #8250df; }
+    .t-opt  { fill: #0969da; }
+    .t-tr   { fill: #1a7f37; }
+    .t-mtl  { fill: #bc4c00; }
+    @media (prefers-color-scheme: dark) {
+      .bg     { fill: #0d1117; }
+      .group  { fill: #161b22; stroke: #30363d; }
+      .box    { fill: #0d1117; stroke: #8b949e; }
+      .later  { fill: #0d1117; stroke: #6e7681; }
+      .title, .label { fill: #e6edf3; }
+      .note   { fill: #9198a1; }
+      .muted  { fill: #848d97; }
+      .edge   { stroke: #8b949e; }
+      .edge-later { stroke: #6e7681; }
+      .head   { fill: #8b949e; }
+      .head-later { fill: #6e7681; }
+      .fe     { fill: #231a38; stroke: #ab7df8; }
+      .opt    { fill: #0f2744; stroke: #4493f8; }
+      .tr     { fill: #0f2a1a; stroke: #3fb950; }
+      .mtl    { fill: #2d1a0c; stroke: #db6d28; }
+      .t-fe   { fill: #bc8cff; }
+      .t-opt  { fill: #58a6ff; }
+      .t-tr   { fill: #56d364; }
+      .t-mtl  { fill: #f0883e; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-later" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head-later" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1170" height="590" rx="8"/>
+
+  <!-- Column titles -->
+  <text class="title t-fe" x="120" y="34" text-anchor="middle">Frontends</text>
+  <text class="title mono t-opt" x="405" y="34" text-anchor="middle">applegpu-opt</text>
+  <text class="title mono t-tr" x="745" y="34" text-anchor="middle">applegpu-translate</text>
+  <text class="title t-mtl" x="1045" y="34" text-anchor="middle">Metal toolchain</text>
+
+  <!-- Column backgrounds (drawn first so arrows sit on top) -->
+  <rect class="group" x="260" y="50" width="290" height="480" rx="8"/>
+  <rect class="group" x="640" y="50" width="210" height="480" rx="8"/>
+  <rect class="group" x="940" y="50" width="210" height="480" rx="8"/>
+
+  <!-- ===== Frontends ===== -->
+  <rect class="box fe" x="20" y="108" width="200" height="90" rx="6"/>
+  <text class="label" x="120" y="132" text-anchor="middle">Triton kernel</text>
+  <text class="note" x="120" y="151" text-anchor="middle">TTIR as generic text;</text>
+  <text class="note" x="120" y="167" text-anchor="middle">Triton is never linked</text>
+  <text class="note mono small" x="120" y="185" text-anchor="middle">tt · arith · scf</text>
+
+  <rect class="box fe" x="20" y="214" width="200" height="90" rx="6"/>
+  <text class="label" x="120" y="237" text-anchor="middle">Standard MLIR</text>
+  <text class="note mono small" x="120" y="257" text-anchor="middle">gpu.module / gpu.func</text>
+  <text class="note mono small" x="120" y="273" text-anchor="middle">gpu · memref · arith · scf</text>
+  <text class="note mono small" x="120" y="289" text-anchor="middle">+ applegpu ops</text>
+
+  <!-- ===== applegpu-opt ===== -->
+  <!-- Column note: the dialect these passes lower into -->
+  <text class="label t-opt" x="405" y="74" text-anchor="middle">AppleGPU dialect</text>
+  <text class="note" x="405" y="91" text-anchor="middle">Apple-specific ops: SIMD-group</text>
+  <text class="note" x="405" y="105" text-anchor="middle">reductions, simdgroup_matrix</text>
+
+  <rect class="box opt" x="280" y="120" width="250" height="66" rx="6"/>
+  <text class="label mono" x="405" y="142" text-anchor="middle">convert-triton-to-gpu</text>
+  <text class="note" x="405" y="161" text-anchor="middle">tt.load / tt.store → memref</text>
+  <text class="note" x="405" y="177" text-anchor="middle">tt.program_id → gpu.block_id</text>
+
+  <rect class="box opt" x="280" y="226" width="250" height="66" rx="6"/>
+  <text class="label mono" x="405" y="248" text-anchor="middle">convert-gpu-to-applegpu</text>
+  <text class="note" x="405" y="267" text-anchor="middle">reductions, shuffles →</text>
+  <text class="note mono small" x="405" y="283" text-anchor="middle">applegpu.simdgroup_*</text>
+
+  <rect class="box opt" x="280" y="332" width="250" height="66" rx="6"/>
+  <text class="label" x="405" y="354" text-anchor="middle">Optimization passes</text>
+  <text class="note" x="405" y="373" text-anchor="middle">tiling, vector width, simdgroup_matrix</text>
+  <text class="note" x="405" y="389" text-anchor="middle">every performance decision is made here</text>
+
+  <rect class="later" x="280" y="438" width="250" height="66" rx="6"/>
+  <text class="label mono muted" x="405" y="460" text-anchor="middle">convert-applegpu-to-air</text>
+  <text class="note" x="405" y="479" text-anchor="middle">→ LLVM dialect + AIR intrinsics</text>
+  <text class="note" x="405" y="495" text-anchor="middle">AIR-only optimizations</text>
+
+  <!-- ===== applegpu-translate ===== -->
+  <rect class="box tr" x="655" y="310" width="180" height="110" rx="6"/>
+  <text class="label" x="745" y="332" text-anchor="middle">MSL emitter</text>
+  <text class="note mono small" x="745" y="349" text-anchor="middle">--mlir-to-msl</text>
+  <text class="note" x="745" y="372" text-anchor="middle">prints already-lowered IR,</text>
+  <text class="note" x="745" y="388" text-anchor="middle">makes no decisions</text>
+  <text class="note" x="745" y="409" text-anchor="middle">unsupported op → emitError</text>
+
+  <rect class="later" x="655" y="436" width="180" height="70" rx="6"/>
+  <text class="label muted" x="745" y="459" text-anchor="middle">AIR emitter</text>
+  <text class="note" x="745" y="478" text-anchor="middle">serializes to .air,</text>
+  <text class="note" x="745" y="494" text-anchor="middle">checked against MSL</text>
+
+  <!-- ===== Metal toolchain ===== -->
+  <rect class="box mtl" x="960" y="70" width="170" height="40" rx="6"/>
+  <text class="label mono" x="1045" y="95" text-anchor="middle">.metal</text>
+
+  <rect class="box mtl" x="960" y="150" width="170" height="40" rx="6"/>
+  <text class="label mono" x="1045" y="175" text-anchor="middle">.air</text>
+
+  <rect class="box mtl" x="960" y="230" width="170" height="40" rx="6"/>
+  <text class="label mono" x="1045" y="255" text-anchor="middle">.metallib</text>
+
+  <rect class="box mtl" x="960" y="310" width="170" height="52" rx="6"/>
+  <text class="label" x="1045" y="331" text-anchor="middle">Metal runtime</text>
+  <text class="note small" x="1045" y="349" text-anchor="middle">loads and launches kernels</text>
+
+  <rect class="box mtl" x="960" y="402" width="170" height="40" rx="6"/>
+  <text class="label" x="1045" y="427" text-anchor="middle">Apple GPU</text>
+
+  <!-- ===== Arrows ===== -->
+  <!-- frontends into applegpu-opt: box centre to box centre -->
+  <path class="edge" d="M220,153 L276,153" marker-end="url(#arrow)"/>
+  <path class="edge" d="M220,259 L276,259" marker-end="url(#arrow)"/>
+
+  <!-- within applegpu-opt -->
+  <path class="edge" d="M405,186 L405,222" marker-end="url(#arrow)"/>
+  <path class="edge" d="M405,292 L405,328" marker-end="url(#arrow)"/>
+  <path class="edge-later" d="M405,398 L405,434" marker-end="url(#arrow-later)"/>
+
+  <!-- applegpu-opt into applegpu-translate -->
+  <path class="edge" d="M530,365 L651,365" marker-end="url(#arrow)"/>
+  <text class="note" x="595" y="331" text-anchor="middle">lowered IR:</text>
+  <text class="note" x="595" y="347" text-anchor="middle">gpu + applegpu</text>
+  <text class="note" x="595" y="385" text-anchor="middle">+ standard</text>
+
+  <path class="edge-later" d="M530,471 L651,471" marker-end="url(#arrow-later)"/>
+  <text class="note" x="595" y="491" text-anchor="middle">LLVM dialect</text>
+
+  <!-- applegpu-translate into the Metal toolchain -->
+  <path class="edge" d="M835,365 L862,365 Q872,365 872,355 L872,100 Q872,90 882,90 L956,90" marker-end="url(#arrow)"/>
+  <path class="edge-later" d="M835,471 L896,471 Q906,471 906,461 L906,180 Q906,170 916,170 L956,170" marker-end="url(#arrow-later)"/>
+
+  <!-- within the Metal toolchain -->
+  <path class="edge" d="M1045,110 L1045,146" marker-end="url(#arrow)"/>
+  <text class="note mono small" x="1056" y="134">metal -c</text>
+  <path class="edge" d="M1045,190 L1045,226" marker-end="url(#arrow)"/>
+  <text class="note mono small" x="1056" y="214">metallib</text>
+  <path class="edge" d="M1045,270 L1045,306" marker-end="url(#arrow)"/>
+  <path class="edge" d="M1045,362 L1045,398" marker-end="url(#arrow)"/>
+
+  <!-- ===== Legend ===== -->
+  <rect class="box" x="20" y="550" width="28" height="18" rx="4"/>
+  <text class="note" x="56" y="563">MSL path</text>
+
+  <rect class="later" x="150" y="550" width="28" height="18" rx="4"/>
+  <text class="note" x="186" y="563">Later: AIR path</text>
+</svg>
