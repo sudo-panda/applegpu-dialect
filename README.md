@@ -30,35 +30,63 @@ Performance work, such as `simdgroup_matrix` support and benchmarks against MLX,
 
 ## Requirements
 
-An Apple silicon Mac with full Xcode and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`), CMake and Ninja. Without the Metal toolchain, the dialect still builds but the GPU tests are skipped.
+- **To build and run the non-GPU tests:** Git, CMake 3.20 or newer, Ninja and a C++17 compiler.
+- **For the GPU tests:** an Apple silicon Mac with full Xcode and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`).
+- **For the Triton tests:** Python 3.13, from python.org, a package manager (for example `brew install python@3.13`) or pyenv. Not 3.14: vllm-metal, the vLLM plug-in for Apple silicon, supports only 3.12 and 3.13.
 
-## Building - Component Build
+## Setup
 
-This setup assumes that you have built LLVM and MLIR in `$BUILD_DIR` and installed them to `$PREFIX`. To build and launch the tests, run
+One script sets up LLVM, Triton and this project, then runs the tests:
+
 ```sh
-mkdir build && cd build
-cmake -G Ninja .. -DMLIR_DIR=$PREFIX/lib/cmake/mlir \
-    -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit \
+git clone https://github.com/sudo-panda/applegpu-dialect.git
+cd applegpu-dialect
+utils/setup.sh
+```
+
+Dependencies go into `deps/` and the Python venv into `.venv/`, both ignored by git, at the versions in [`utils/pins.txt`](utils/pins.txt):
+
+```text
+applegpu-dialect/
+  build/              this project's build
+  deps/llvm-project/  LLVM sources, only the pinned commit
+  deps/llvm-build/    LLVM and MLIR build (about 12 GB with the sources)
+  deps/triton/        Triton at the pinned tag (about 7 GB)
+  .venv/              Python venv with Triton installed (editable)
+```
+
+- **The first run** builds LLVM and Triton from source, which takes from tens of minutes to a few hours depending on the machine.
+- **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer LLVM or Triton, change `utils/pins.txt` and rerun.
+- **`--no-triton`** skips Triton. The Triton tests are then reported as unsupported.
+- **`--llvm-build DIR`** uses an existing LLVM/MLIR build instead of building one in `deps/`.
+- **`--jobs N`** sets the parallel jobs for the LLVM and Triton builds; without it, each uses its own default. With 16 GB of memory or less, use `--jobs 4`: Triton's default, twice the number of cores, can run the machine out of memory. LLVM always links at most two tools at a time for the same reason.
+- **Python:** the venv uses `python3.13` from `PATH` (the version comes from `utils/pins.txt`); set `PYTHON` to use another interpreter of that version. The script stops if the version is wrong.
+- Triton downloads its own prebuilt LLVM into `~/.triton` (or `$TRITON_HOME/.triton`); it never uses `deps/llvm-build`, and this project never links Triton.
+
+Tests that cannot run on a machine are reported as unsupported rather than failed: the GPU tests without the Metal toolchain, the Triton tests without Triton.
+
+**Careful with `git clean -fdx`:** it deletes ignored files, including `deps/` and hours of builds. Use `git clean -fdx -e deps/`. Editors that watch files (VS Code, clangd) should exclude `deps/` too.
+
+**After setup**, rebuild and test with:
+
+```sh
+ninja -C build check-applegpu
+```
+
+`ninja -C build mlir-doc` builds the dialect documentation from its TableGen description.
+
+The `cmake` output includes a line `Triton for tests: python='...' triton-opt='...'`. Empty paths mean Triton was not found in `.venv` and `deps/triton`. To use a Triton somewhere else, pass `-DAPPLEGPU_TRITON_PYTHON=<python that can import triton>` and `-DAPPLEGPU_TRITON_OPT=<triton-opt from the same build>`.
+
+## Without the script
+
+To build against an LLVM/MLIR build of your own, at the commit in `utils/pins.txt`:
+
+```sh
+cmake -G Ninja -S . -B build \
+    -DMLIR_DIR=<llvm-build>/lib/cmake/mlir \
+    -DLLVM_EXTERNAL_LIT=<llvm-build>/bin/llvm-lit \
     -DMLIR_INCLUDE_TESTS=ON
-cmake --build . --target check-applegpu
+ninja -C build check-applegpu
 ```
-To build the documentation from the TableGen description of the dialect operations, run
-```sh
-cmake --build . --target mlir-doc
-```
-**Note**: Pass `-DMLIR_INCLUDE_TESTS=ON` as above, otherwise the `check-applegpu` target is not created. Also make sure to pass `-DLLVM_INSTALL_UTILS=ON` when building LLVM in order to install `FileCheck` to the chosen installation prefix.
 
-## Building - Monolithic Build
-
-This setup assumes that you build the project as part of a monolithic LLVM build via the `LLVM_EXTERNAL_PROJECTS` mechanism.
-To build LLVM, MLIR, the dialect and launch the tests run
-```sh
-mkdir build && cd build
-cmake -G Ninja `$LLVM_SRC_DIR/llvm` \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_TARGETS_TO_BUILD=host \
-    -DLLVM_ENABLE_PROJECTS=mlir \
-    -DLLVM_EXTERNAL_PROJECTS=applegpu-dialect -DLLVM_EXTERNAL_APPLEGPU_DIALECT_SOURCE_DIR=../
-cmake --build . --target check-applegpu
-```
-Here, `$LLVM_SRC_DIR` needs to point to the root of the monorepo.
+`utils/setup.sh --llvm-build <llvm-build>` does the same and sets up Triton too. Without `-DMLIR_INCLUDE_TESTS=ON` the `check-applegpu` target is not created.
