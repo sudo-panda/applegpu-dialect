@@ -1,3 +1,22 @@
+# Triton for test/Integration/Triton. Both are used as outside programs, never
+# linked. When unset, they are looked for in a Triton checkout next to this
+# repository (../triton, with its venv in .venv); if not found, the Triton
+# tests are reported as unsupported.
+set(APPLEGPU_TRITON_PYTHON "" CACHE FILEPATH "Python interpreter that can import triton")
+set(APPLEGPU_TRITON_OPT "" CACHE FILEPATH "triton-opt from the same Triton build")
+
+get_filename_component(_applegpu_triton_dir "${APPLEGPU_SOURCE_DIR}/../triton" ABSOLUTE)
+if(NOT APPLEGPU_TRITON_PYTHON AND EXISTS "${_applegpu_triton_dir}/.venv/bin/python")
+  set(APPLEGPU_TRITON_PYTHON "${_applegpu_triton_dir}/.venv/bin/python")
+endif()
+if(NOT APPLEGPU_TRITON_OPT)
+  file(GLOB _applegpu_triton_opt "${_applegpu_triton_dir}/build/*/bin/triton-opt")
+  if(_applegpu_triton_opt)
+    list(GET _applegpu_triton_opt 0 APPLEGPU_TRITON_OPT)
+  endif()
+endif()
+message(STATUS "Triton for tests: python='${APPLEGPU_TRITON_PYTHON}' triton-opt='${APPLEGPU_TRITON_OPT}'")
+
 configure_lit_site_cfg(
         ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
         ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
