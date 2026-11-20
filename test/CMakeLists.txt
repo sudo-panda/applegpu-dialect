@@ -1,13 +1,13 @@
 # Triton for test/Integration/Triton. Both are used as outside programs, never
-# linked. When unset, they are looked for in a Triton checkout next to this
-# repository (../triton, with its venv in .venv); if not found, the Triton
-# tests are reported as unsupported.
+# linked. When unset, they are looked for where utils/setup.sh puts them: the
+# repository's venv (.venv) and the Triton build in deps/triton. If not found,
+# the Triton tests are reported as unsupported.
 set(APPLEGPU_TRITON_PYTHON "" CACHE FILEPATH "Python interpreter that can import triton")
 set(APPLEGPU_TRITON_OPT "" CACHE FILEPATH "triton-opt from the same Triton build")
 
-get_filename_component(_applegpu_triton_dir "${APPLEGPU_SOURCE_DIR}/../triton" ABSOLUTE)
-if(NOT APPLEGPU_TRITON_PYTHON AND EXISTS "${_applegpu_triton_dir}/.venv/bin/python")
-  set(APPLEGPU_TRITON_PYTHON "${_applegpu_triton_dir}/.venv/bin/python")
+set(_applegpu_triton_dir "${APPLEGPU_SOURCE_DIR}/deps/triton")
+if(NOT APPLEGPU_TRITON_PYTHON AND EXISTS "${APPLEGPU_SOURCE_DIR}/.venv/bin/python")
+  set(APPLEGPU_TRITON_PYTHON "${APPLEGPU_SOURCE_DIR}/.venv/bin/python")
 endif()
 if(NOT APPLEGPU_TRITON_OPT)
   file(GLOB _applegpu_triton_opt "${_applegpu_triton_dir}/build/*/bin/triton-opt")
