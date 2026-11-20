@@ -1,8 +1,7 @@
 // RUN: applegpu-translate %s --mlir-to-msl > %t.metal
 // RUN: xcrun -sdk macosx metal -c %t.metal -o %t.air
 // RUN: xcrun -sdk macosx metallib %t.air -o %t.metallib
-// RUN: xcrun -sdk macosx swiftc %S/../runners/run_kernel.swift -o %t.runner
-// RUN: %t.runner %t.metallib reduce | FileCheck %s
+// RUN: %run_grid %t.metallib reduce 1 32 f32:32:iota f32:32:fill=0 | FileCheck %s
 
 module attributes {gpu.container_module} {
   gpu.module @kernels {
@@ -16,5 +15,5 @@ module attributes {gpu.container_module} {
   }
 }
 
-// CHECK: GPU:
-// CHECK-COUNT-32: = 528.0
+// The input holds 0..31, so every lane gets 0 + 1 + ... + 31 = 496.
+// CHECK-COUNT-32: arg1[{{[0-9]+}}] = 496.0

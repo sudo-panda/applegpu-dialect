@@ -38,3 +38,7 @@ tools = [
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+# GPU runner built from test/runners/run_grid.mm (macOS only).
+config.substitutions.append(
+    ("%run_grid", '"%s"' % os.path.join(config.test_exec_root, "runners", "run-grid")))
