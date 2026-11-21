@@ -62,3 +62,8 @@ if triton_available(config.triton_python, config.triton_opt):
     config.available_features.add("triton")
     config.substitutions.append(("%triton_python", '"%s"' % config.triton_python))
     config.substitutions.append(("%triton_opt", '"%s"' % config.triton_opt))
+    config.substitutions.append(
+        ("%triton_to_ttgir", '"%s" "%s" --triton-opt "%s"' % (
+            config.triton_python,
+            os.path.join(config.test_source_root, "runners", "triton_to_ttgir.py"),
+            config.triton_opt)))

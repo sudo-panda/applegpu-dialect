@@ -4,9 +4,9 @@
 #
 # Python -> TTGIR (generic form). 4 SIMD-groups of 32 threads per program;
 # with BLOCK = 512, coalesce gives each thread 4 adjacent elements.
-# RUN: %triton_python %S/../../runners/triton_to_ttgir.py %s add_kernel \
+# RUN: %triton_to_ttgir %s add_kernel \
 # RUN:   --signature 'x_ptr=*fp32,y_ptr=*fp32,out_ptr=*fp32,n=i32' \
-# RUN:   --constexpr BLOCK=512 --num-warps 4 --triton-opt %triton_opt > %t.ttgir
+# RUN:   --constexpr BLOCK=512 --num-warps 4 > %t.ttgir
 #
 # TTGIR -> MSL:
 # RUN: applegpu-opt --allow-unregistered-dialect --convert-ttgir-to-applegpu \

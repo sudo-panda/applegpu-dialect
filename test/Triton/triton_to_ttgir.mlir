@@ -1,10 +1,9 @@
 // test/runners/triton_to_ttgir.py on vector add: Triton's passes choose the
 // layout, and the TTGIR survives a round trip through applegpu-opt unchanged.
 //
-// RUN: %triton_python %S/../runners/triton_to_ttgir.py \
-// RUN:   %S/../Integration/Triton/vector_add.py add_kernel \
+// RUN: %triton_to_ttgir %S/../Integration/Triton/vector_add.py add_kernel \
 // RUN:   --signature 'x_ptr=*fp32,y_ptr=*fp32,out_ptr=*fp32,n=i32' \
-// RUN:   --constexpr BLOCK=512 --num-warps 4 --triton-opt %triton_opt > %t.ttgir
+// RUN:   --constexpr BLOCK=512 --num-warps 4 > %t.ttgir
 // RUN: FileCheck %s < %t.ttgir
 // RUN: applegpu-opt --allow-unregistered-dialect --mlir-print-op-generic \
 // RUN:   --mlir-print-local-scope --mlir-print-debuginfo %t.ttgir | diff %t.ttgir -
