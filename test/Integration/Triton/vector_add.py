@@ -1,28 +1,26 @@
-# End to end: Triton kernel -> TTIR -> applegpu-opt -> MSL -> metallib -> GPU.
+# End to end: Triton kernel -> TTGIR -> applegpu-opt -> MSL -> metallib -> GPU.
 #
 # XFAIL: *
-# The convert-triton-to-gpu pass does not exist yet. Remove the XFAIL line
-# when this test passes.
 #
-# Python -> TTIR, in generic form without locations:
-# RUN: %triton_python %S/../../runners/triton_to_ttir.py %s add_kernel \
+# Python -> TTGIR (generic form). 4 SIMD-groups of 32 threads per program;
+# with BLOCK = 512, coalesce gives each thread 4 adjacent elements.
+# RUN: %triton_python %S/../../runners/triton_to_ttgir.py %s add_kernel \
 # RUN:   --signature 'x_ptr=*fp32,y_ptr=*fp32,out_ptr=*fp32,n=i32' \
-# RUN:   --constexpr BLOCK=128 \
-# RUN:   | %triton_opt --mlir-print-op-generic > %t.ttir
+# RUN:   --constexpr BLOCK=512 --num-warps 4 --triton-opt %triton_opt > %t.ttgir
 #
-# TTIR -> MSL. One Triton program is one threadgroup of BLOCK threads, one
-# element per thread.
-# RUN: applegpu-opt --allow-unregistered-dialect --convert-triton-to-gpu %t.ttir \
-# RUN:   | applegpu-translate --mlir-to-msl > %t.metal
+# TTGIR -> MSL:
+# RUN: applegpu-opt --allow-unregistered-dialect --convert-ttgir-to-applegpu \
+# RUN:   --applegpu-distribute %t.ttgir | applegpu-translate --mlir-to-msl > %t.metal
 #
 # MSL -> metallib:
 # RUN: xcrun -sdk macosx metal -c %t.metal -o %t.air
 # RUN: xcrun -sdk macosx metallib %t.air -o %t.metallib
 #
-# Run 8 programs of 128 elements over n = 1000, so the last program is only
-# partly masked in. The output starts as -1 to show the masked tail is not
-# written. Buffers follow the kernel's argument order.
-# RUN: %run_grid %t.metallib add_kernel 8 128 \
+# Run 2 programs (threadgroups of 128 threads, 512 elements each) over
+# n = 1000, so the last program is only partly masked in. The output starts
+# as -1 to show the masked tail is not written. Buffers follow the kernel's
+# argument order.
+# RUN: %run_grid %t.metallib add_kernel 2 128 \
 # RUN:   f32:1024:iota 'f32:1024:iota*2' f32:1024:fill=-1 i32:1000 > %t.out
 #
 # Compare every element with the reference printed by this file:
