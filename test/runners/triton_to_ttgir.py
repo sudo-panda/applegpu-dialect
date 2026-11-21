@@ -26,6 +26,10 @@ Constants are numbers, True, False or None (a pointer argument passed as None).
 
 --plugin loads a Triton plugin (dialects and passes); its passes run right
 after optimize_thread_locality.
+
+--vllm is for kernels in vLLM's sources. vLLM's macOS build turns Triton off
+(its kernels become placeholders) unless Triton has a backend named "cpu", so
+an inactive one is registered in this process before the kernel is loaded.
 """
 
 import argparse
@@ -74,6 +78,17 @@ def parse_constant(value):
         return float(value)
     except ValueError:
         sys.exit(f"error: constant '{value}' is not None, True, False or a number")
+
+
+class InactiveDriver:
+    @staticmethod
+    def is_active():
+        return False
+
+
+def keep_vllm_triton_on():
+    from triton.backends import Backend, backends
+    backends.setdefault("cpu", Backend(compiler=None, driver=InactiveDriver))
 
 
 def load_kernel(path, name):
@@ -147,6 +162,8 @@ def main():
     parser.add_argument("--target", default="apple:m1",
                         help="ttg.target of the module (default apple:m1)")
     parser.add_argument("--plugin", help="Triton plugin library to load")
+    parser.add_argument("--vllm", action="store_true",
+                        help="the kernel is in vLLM's sources (keeps vLLM's Triton on)")
     parser.add_argument("--triton-opt", default=shutil.which("triton-opt"),
                         help="triton-opt from the same Triton (default: on PATH)")
     args = parser.parse_args()
@@ -161,6 +178,8 @@ def main():
         plugin_passes = [getattr(passes.plugin, name) for name in sorted(set(dir(passes.plugin)) - before)
                          if name.startswith("add_")]
 
+    if args.vllm:
+        keep_vllm_triton_on()
     kernel = load_kernel(args.file, args.kernel)
     given = parse_pairs(args.signature)
     constexprs = {k: parse_constant(v) for k, v in parse_pairs(args.constexpr).items()}
