@@ -19,6 +19,10 @@ Arguments are specialized as Triton's launcher does:
   ones that are 1 at run time (unit strides), as the launcher does.
 - Integer arguments named in --divisible get tt.divisibility = 16; name the
   ones that are multiples of 16 at run time, as the launcher does.
+- Parameters left out take their default, when it is None or the parameter
+  is a tl.constexpr (Triton specializes both to constants).
+
+Constants are numbers, True, False or None (a pointer argument passed as None).
 
 --plugin loads a Triton plugin (dialects and passes); its passes run right
 after optimize_thread_locality.
@@ -59,10 +63,17 @@ def parse_pairs(text):
 
 
 def parse_constant(value):
+    named = {"None": None, "True": True, "False": False}
+    if value in named:
+        return named[value]
     try:
         return int(value)
     except ValueError:
+        pass
+    try:
         return float(value)
+    except ValueError:
+        sys.exit(f"error: constant '{value}' is not None, True, False or a number")
 
 
 def load_kernel(path, name):
@@ -160,7 +171,11 @@ def main():
     # ASTSource wants every parameter, in order; constants are typed
     # "constexpr" and their values passed separately.
     signature = {}
-    for name in kernel.arg_names:
+    for param in kernel.params:
+        name = param.name
+        if (name not in constexprs and name not in given and param.has_default
+                and (param.is_constexpr or param.default is None)):
+            constexprs[name] = param.default  # as when a caller leaves it out
         if name in constexprs:
             signature[name] = "constexpr"
         elif name in given:
