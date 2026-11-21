@@ -32,7 +32,7 @@ Performance work, such as `simdgroup_matrix` support and benchmarks against MLX,
 
 - **To build and run the non-GPU tests:** Git, CMake 3.20 or newer, Ninja and a C++17 compiler.
 - **For the GPU tests:** an Apple silicon Mac with full Xcode and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`).
-- **For the Triton tests:** Python 3.13, from python.org, a package manager (for example `brew install python@3.13`) or pyenv. Not 3.14: vllm-metal, the vLLM plug-in for Apple silicon, supports only 3.12 and 3.13.
+- **For the Triton tests:** Python at the version `PYTHON_VERSION` in `utils/pins.txt`, from python.org, a package manager or pyenv. It is pinned to a version that vllm-metal, the vLLM plug-in for Apple silicon, supports.
 
 ## Setup
 
@@ -52,15 +52,17 @@ applegpu-dialect/
   deps/llvm-project/  LLVM sources, only the pinned commit
   deps/llvm-build/    LLVM and MLIR build (about 12 GB with the sources)
   deps/triton/        Triton at the pinned tag (about 7 GB)
+  deps/vllm-metal/    vllm-metal at the pinned tag, with --with-vllm
   .venv/              Python venv with Triton installed (editable)
 ```
 
 - **The first run** builds LLVM and Triton from source, which takes from tens of minutes to a few hours depending on the machine.
-- **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer LLVM or Triton, change `utils/pins.txt` and rerun.
+- **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer LLVM or Triton, change [`utils/pins.txt`](utils/pins.txt) and rerun.
 - **`--no-triton`** skips Triton. The Triton tests are then reported as unsupported.
+- **`--with-vllm`** also installs PyTorch, [vLLM](https://github.com/vllm-project/vllm) and [vllm-metal](https://github.com/vllm-project/vllm-metal) into `.venv`, for running Triton kernels on MPS tensors and, later, vLLM itself. It needs macOS on Apple silicon and the Metal toolchain.
 - **`--llvm-build DIR`** uses an existing LLVM/MLIR build instead of building one in `deps/`.
 - **`--jobs N`** sets the parallel jobs for the LLVM and Triton builds; without it, each uses its own default. With 16 GB of memory or less, use `--jobs 4`: Triton's default, twice the number of cores, can run the machine out of memory. LLVM always links at most two tools at a time for the same reason.
-- **Python:** the venv uses `python3.13` from `PATH` (the version comes from `utils/pins.txt`); set `PYTHON` to use another interpreter of that version. The script stops if the version is wrong.
+- **Python:** the venv uses `python` from `PATH`; set `PYTHON` to use another interpreter of that version. The script stops if the version is wrong.
 - Triton downloads its own prebuilt LLVM into `~/.triton` (or `$TRITON_HOME/.triton`); it never uses `deps/llvm-build`, and `applegpu-opt` never links Triton.
 
 Tests that cannot run on a machine are reported as unsupported rather than failed: the GPU tests without the Metal toolchain, the Triton tests without Triton.
