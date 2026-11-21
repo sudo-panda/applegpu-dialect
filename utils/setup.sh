@@ -118,8 +118,10 @@ if [[ $with_triton == 1 ]]; then
   step "Building Triton (about 30 minutes the first time)"
   "$venv/bin/pip" install -q -r "$triton/python/requirements.txt"
   # Without build isolation the build folder stays usable for incremental
-  # rebuilds. MAX_JOBS is set only with --jobs.
-  (cd "$triton" && env ${jobs:+MAX_JOBS=$jobs} "$venv/bin/pip" install -q -e . --no-build-isolation)
+  # rebuilds. MAX_JOBS is set only with --jobs. TRITON_EXT_ENABLED=1 exports
+  # libtriton's symbols so that plugins (triton-plugin/) can load
+  (cd "$triton" && env TRITON_EXT_ENABLED=1 ${jobs:+MAX_JOBS=$jobs} \
+      "$venv/bin/pip" install -q -e . --no-build-isolation)
 else
   step "Skipping Triton (--no-triton): the Triton tests will be unsupported"
 fi
