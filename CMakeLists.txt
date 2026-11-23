@@ -53,6 +53,34 @@ add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(include)
 add_subdirectory(lib)
+
+# Triton, when present (utils/setup.sh puts it in deps/triton). Nothing here
+# links it: its tools run as outside programs, and the Triton plugin in
+# triton-plugin/ is a separate CMake project built with Triton's own LLVM and
+# compiler, which only Triton loads.
+set(APPLEGPU_TRITON_BUILD_DIR "" CACHE PATH
+    "Triton's CMake build folder (deps/triton/build/cmake.<platform>-cpython-<version>)")
+if(NOT APPLEGPU_TRITON_BUILD_DIR)
+  file(GLOB _applegpu_triton_caches "${APPLEGPU_SOURCE_DIR}/deps/triton/build/*/CMakeCache.txt")
+  if(_applegpu_triton_caches)
+    list(GET _applegpu_triton_caches 0 _applegpu_triton_cache)
+    get_filename_component(APPLEGPU_TRITON_BUILD_DIR "${_applegpu_triton_cache}" DIRECTORY)
+  endif()
+endif()
+if(APPLEGPU_TRITON_BUILD_DIR)
+  include(ExternalProject)
+  set(APPLEGPU_TRITON_PLUGIN
+      "${APPLEGPU_BINARY_DIR}/triton-plugin/libAppleTritonPlugin${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  ExternalProject_Add(apple-triton-plugin
+    SOURCE_DIR "${APPLEGPU_SOURCE_DIR}/triton-plugin"
+    BINARY_DIR "${APPLEGPU_BINARY_DIR}/triton-plugin"
+    CMAKE_ARGS "-DTRITON_BUILD_DIR=${APPLEGPU_TRITON_BUILD_DIR}"
+    BUILD_ALWAYS ON
+    INSTALL_COMMAND ""
+    BUILD_BYPRODUCTS "${APPLEGPU_TRITON_PLUGIN}")
+endif()
+message(STATUS "Triton build: '${APPLEGPU_TRITON_BUILD_DIR}'")
+
 if(MLIR_INCLUDE_TESTS)
   add_subdirectory(test)
 endif()

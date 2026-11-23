@@ -67,3 +67,8 @@ if triton_available(config.triton_python, config.triton_opt):
             config.triton_python,
             os.path.join(config.test_source_root, "runners", "triton_to_ttgir.py"),
             config.triton_opt)))
+
+    # The Apple Triton plugin (triton-plugin/), built with the tests.
+    if config.apple_triton_plugin:
+        config.available_features.add("apple-triton-plugin")
+        config.substitutions.append(("%apple_triton_plugin", '"%s"' % config.apple_triton_plugin))

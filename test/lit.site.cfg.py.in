@@ -4,6 +4,7 @@ config.llvm_tools_dir = lit_config.substitute("@LLVM_TOOLS_DIR@")
 config.applegpu_obj_root = "@APPLEGPU_BINARY_DIR@"
 config.triton_python = "@APPLEGPU_TRITON_PYTHON@"
 config.triton_opt = "@APPLEGPU_TRITON_OPT@"
+config.apple_triton_plugin = "@APPLEGPU_TRITON_PLUGIN@"
 
 import lit.llvm
 lit.llvm.initialize(lit_config, config)
