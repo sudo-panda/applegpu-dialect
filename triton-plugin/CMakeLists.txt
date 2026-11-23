@@ -55,6 +55,8 @@ include_directories(SYSTEM ${MLIR_INCLUDE_DIRS} ${LLVM_INCLUDE_DIRS})
 set(LLVM_TARGET_DEFINITIONS AppleTT.td)
 mlir_tablegen(AppleTTDialect.h.inc -gen-dialect-decls -dialect=apple_tt)
 mlir_tablegen(AppleTTDialect.cpp.inc -gen-dialect-defs -dialect=apple_tt)
+mlir_tablegen(AppleTTAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=apple_tt)
+mlir_tablegen(AppleTTAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=apple_tt)
 add_public_tablegen_target(AppleTTIncGen)
 
 add_library(AppleTritonPlugin SHARED
