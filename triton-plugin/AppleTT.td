@@ -5,6 +5,7 @@
 #define APPLE_TT_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUAttrInterfaces.td"
 
 def AppleTT_Dialect : Dialect {
   let name = "apple_tt";
@@ -14,9 +15,20 @@ def AppleTT_Dialect : Dialect {
 }
 
 def AppleTT_SimdgroupMmaEncodingAttr
-    : AttrDef<AppleTT_Dialect, "SimdgroupMmaEncoding"> {
+    : AttrDef<AppleTT_Dialect, "SimdgroupMmaEncoding", [
+        DeclareAttrInterfaceMethods<LayoutEncodingTrait, ["getCGALayout"]>,
+        DeclareAttrInterfaceMethods<DistributedEncodingTrait,
+                                    ["getRepOrder", "toLinearLayout"]>]> {
   let mnemonic = "simdgroup_mma";
   let summary = "Result layout of a dot computed with simdgroup_matrix<T, 8, 8>";
+  let description = [{
+    The tensor is tiled into 8x8 simdgroup_matrix fragments. Within a
+    fragment, each lane holds 2 adjacent elements of one row: register bit 0
+    is column bit 0, and lane bits 0-4 are column bit 1, row bits 0 and 1,
+    column bit 2 and row bit 2 (measured on the GPU; the same mapping as
+    MLX's get_coord). SIMD-groups are arranged as warpsPerCTA, row-major, and
+    the pattern repeats over the tensor in registers.
+  }];
   let parameters = (ins ArrayRefParameter<"unsigned">:$warpsPerCTA);
   let assemblyFormat = "`<` `{` `warpsPerCTA` `=` `[` $warpsPerCTA `]` `}` `>`";
   let genVerifyDecl = 1;

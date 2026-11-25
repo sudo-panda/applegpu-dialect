@@ -11,6 +11,8 @@ endif()
 if(NOT APPLEGPU_TRITON_OPT AND EXISTS "${APPLEGPU_TRITON_BUILD_DIR}/bin/triton-opt")
   set(APPLEGPU_TRITON_OPT "${APPLEGPU_TRITON_BUILD_DIR}/bin/triton-opt")
 endif()
+get_filename_component(_applegpu_triton_bin "${APPLEGPU_TRITON_OPT}" DIRECTORY)
+set(APPLEGPU_TRITON_TENSOR_LAYOUT "${_applegpu_triton_bin}/triton-tensor-layout")
 message(STATUS "Triton for tests: python='${APPLEGPU_TRITON_PYTHON}' triton-opt='${APPLEGPU_TRITON_OPT}' plugin='${APPLEGPU_TRITON_PLUGIN}'")
 
 configure_lit_site_cfg(

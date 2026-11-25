@@ -44,6 +44,14 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 config.substitutions.append(
     ("%run_grid", '"%s"' % os.path.join(config.test_exec_root, "runners", "run-grid")))
 
+# The Metal toolchain, for tests that compile and run kernels on the GPU.
+try:
+    subprocess.run(["xcrun", "-sdk", "macosx", "metal", "--version"], check=True,
+                   capture_output=True, timeout=60)
+    config.available_features.add("metal")
+except Exception:
+    pass
+
 
 # Triton is never linked into this project. Its tests run Triton's own Python
 # and triton-opt as outside programs, and are unsupported without them.
@@ -62,6 +70,7 @@ if triton_available(config.triton_python, config.triton_opt):
     config.available_features.add("triton")
     config.substitutions.append(("%triton_python", '"%s"' % config.triton_python))
     config.substitutions.append(("%triton_opt", '"%s"' % config.triton_opt))
+    config.substitutions.append(("%triton_tensor_layout", '"%s"' % config.triton_tensor_layout))
     config.substitutions.append(
         ("%triton_to_ttgir", '"%s" "%s" --triton-opt "%s"' % (
             config.triton_python,
