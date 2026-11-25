@@ -81,3 +81,13 @@ if triton_available(config.triton_python, config.triton_opt):
     if config.apple_triton_plugin:
         config.available_features.add("apple-triton-plugin")
         config.substitutions.append(("%apple_triton_plugin", '"%s"' % config.apple_triton_plugin))
+
+    # vLLM's sources, for its Triton kernels (utils/setup.sh --with-vllm).
+    result = subprocess.run(
+        [config.triton_python, "-c",
+         "import importlib.util, os; s = importlib.util.find_spec('vllm'); "
+         "print(os.path.dirname(s.origin) if s else '')"],
+        capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        config.available_features.add("vllm")
+        config.substitutions.append(("%vllm_dir", '"%s"' % result.stdout.strip()))
