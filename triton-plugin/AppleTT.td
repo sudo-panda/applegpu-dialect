@@ -1,10 +1,11 @@
-// The apple_tt dialect: Apple GPU layouts that Triton loads as a plugin.
-// Built against Triton's headers and Triton's LLVM.
+// The apple_tt dialect: Apple GPU layouts and passes that Triton loads as a
+// plugin. Built against Triton's headers and Triton's LLVM.
 
 #ifndef APPLE_TT_TD
 #define APPLE_TT_TD
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/Pass/PassBase.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrInterfaces.td"
 
 def AppleTT_Dialect : Dialect {
@@ -40,6 +41,21 @@ def AppleTT_SimdgroupMmaEncodingAttr
   let parameters = (ins ArrayRefParameter<"unsigned">:$warpsPerCTA);
   let assemblyFormat = "`<` `{` `warpsPerCTA` `=` `[` $warpsPerCTA `]` `}` `>`";
   let genVerifyDecl = 1;
+}
+
+def AppleAccelerateMatmul
+    : Pass<"apple-accelerate-matmul", "mlir::ModuleOp"> {
+  let summary = "Give tt.dot the simdgroup_matrix layout";
+  let description = [{
+    Rewrites each 2-D tt.dot with a blocked result into one with the
+    #apple_tt.simdgroup_mma layout when the inputs are f16, bf16 or f32, the
+    accumulator is f32, and M, N and K are multiples of 8. SIMD-groups are
+    placed as NVIDIA's warpsPerTileV2 places warps, with 8x8 tiles. Layout
+    conversions are added around the dot for remove-layout-conversions to
+    propagate.
+  }];
+  let dependentDialects = ["::mlir::apple_tt::AppleTTDialect",
+                           "::mlir::triton::gpu::TritonGPUDialect"];
 }
 
 #endif // APPLE_TT_TD

@@ -58,10 +58,12 @@ mlir_tablegen(AppleTTDialect.h.inc -gen-dialect-decls -dialect=apple_tt ${MLIR_T
 mlir_tablegen(AppleTTDialect.cpp.inc -gen-dialect-defs -dialect=apple_tt ${MLIR_TABLEGEN_FLAGS})
 mlir_tablegen(AppleTTAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=apple_tt ${MLIR_TABLEGEN_FLAGS})
 mlir_tablegen(AppleTTAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=apple_tt ${MLIR_TABLEGEN_FLAGS})
+mlir_tablegen(AppleTTPasses.h.inc -gen-pass-decls -name AppleTT ${MLIR_TABLEGEN_FLAGS})
 add_public_tablegen_target(AppleTTIncGen)
 
 add_library(AppleTritonPlugin SHARED
   AppleTTDialect.cpp
+  AppleAccelerateMatmul.cpp
   Plugin.cpp)
 add_dependencies(AppleTritonPlugin AppleTTIncGen)
 target_compile_options(AppleTritonPlugin PRIVATE -O2 -fno-exceptions -fno-rtti)
