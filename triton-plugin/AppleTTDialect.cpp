@@ -2,6 +2,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/LinearLayout.h"
@@ -17,6 +18,31 @@ using namespace mlir::triton::gpu;
 
 namespace mlir::apple_tt {
 namespace {
+
+// Triton also asks the layout's dialect to check each tensor layout against
+// its module: rank, threads per warp, ttg.num-warps and CTAs. TritonGPU's
+// checks work from the LinearLayout too, so both questions are forwarded.
+struct VerifyLayout : public triton::DialectVerifyTensorLayoutInterface {
+  using DialectVerifyTensorLayoutInterface::DialectVerifyTensorLayoutInterface;
+
+  const triton::DialectVerifyTensorLayoutInterface &ttg() const {
+    auto *dialect =
+        getDialect()->getContext()->getLoadedDialect<TritonGPUDialect>();
+    return *dialect->getRegisteredInterface<
+        triton::DialectVerifyTensorLayoutInterface>();
+  }
+
+  LogicalResult verifyTensorLayout(
+      Attribute layout, RankedTensorType type, Operation *op,
+      function_ref<InFlightDiagnostic()> emitError) const override {
+    return ttg().verifyTensorLayout(layout, type, op, emitError);
+  }
+  LogicalResult verifyMemDescLayout(
+      Attribute layout, Type type, Operation *op,
+      function_ref<InFlightDiagnostic()> emitError) const override {
+    return ttg().verifyMemDescLayout(layout, type, op, emitError);
+  }
+};
 
 // One 8x8 simdgroup_matrix fragment, rows on `rowDim` and columns on
 // `colDim`: 32 lanes x 2 registers. See the attribute's description.
@@ -49,6 +75,7 @@ void AppleTTDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "AppleTTAttrs.cpp.inc"
       >();
+  addInterfaces<VerifyLayout>();
 }
 
 LogicalResult
