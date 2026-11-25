@@ -16,7 +16,7 @@ It provides two tools: `applegpu-opt`, which runs the lowering and optimization 
 
 ![AppleGPU compilation pipeline](docs/applegpu-pipeline.svg)
 
-Triton and standard MLIR share the same dialect, passes and emitters. A Triton kernel first goes through Triton's own target-independent layout passes in Triton's process, together with a small Triton plugin of ours that gives matrix multiplications Apple's `simdgroup_matrix` layout. The result reaches `applegpu-opt` as TTGIR in text form, so `applegpu-opt` never links Triton. The backend never depends on a specific frontend, and all performance decisions are made before the emitters so that every output format benefits from them. The reason behind each design decision is in the [design FAQ](docs/design-faq.md).
+Triton and standard MLIR share the same dialect, passes and emitters. Standard MLIR is lowered by `applegpu-opt`. A Triton kernel goes through Triton's own target-independent layout passes in Triton's process, together with a Triton plugin of ours: it gives matrix multiplications Apple's `simdgroup_matrix` layout and lowers the kernel to per-thread `applegpu` IR, using Triton's own analyses. The plugin then runs our passes and MSL emitter in the same process, so a Triton kernel compiles without a subprocess, and our tools never link Triton. Triton support is optional and off unless you ask for it; without it, the only trace of Triton is the LLVM version, which is Triton's so that the plugin can share it. All performance decisions are made before the emitters so that every output format benefits from them. The reason behind each design decision is in the [design FAQ](docs/design-faq.md).
 
 ## Roadmap
 

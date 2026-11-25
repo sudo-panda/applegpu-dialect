@@ -35,17 +35,23 @@ A guess produces kernels that compile and give wrong answers, which is the harde
 
 ## Triton boundary
 
-**Why never link Triton into `applegpu-opt`?**
-Triton pins its own LLVM, which differs from ours. Linking both into one binary means two copies of LLVM, symbol clashes, and breakage every time Triton changes its C++ API.
+**Is Triton required?**
+No. Triton support is a CMake option, off by default. Without it, nothing of Triton is fetched, built or tested; the only trace of Triton is which LLVM version the project uses.
 
-**How does Triton's IR reach us without linking?**
-As MLIR text in generic form, which `applegpu-opt` parses with `--allow-unregistered-dialect`. Text is the format that best tolerates two different LLVM versions; MLIR bytecode is tied to the version that wrote it.
+**Why use Triton's LLVM?**
+So that our dialect can run inside Triton's process and use Triton's own analyses directly. With two different LLVMs, everything Triton knows would have to be copied or exported as text: its layout math, its alignment analysis, its threadgroup-memory allocation and its barrier placement. Triton's LLVM is a few months behind LLVM main, which is normal for an out-of-tree dialect, and its prebuilt download saves building LLVM.
 
-**Does text lose information?**
-Not when printed with `--mlir-print-op-generic --mlir-print-local-scope --mlir-print-debuginfo`. Without `--mlir-print-local-scope`, a slice layout refers to its parent through an alias that `applegpu-opt` drops, because it cannot see inside Triton's attributes. With the flag, a round trip through `applegpu-opt` reproduces Triton's IR exactly.
+**Why not stay on our own, newer LLVM?**
+It only helped users who need LLVM main and do not use Triton, and it cost a hand-written parser for Triton's text, a copy of about 4,700 lines of Triton code and more of the same for every analysis we needed. Our code builds on both LLVMs today with two include changes, so moving back stays cheap if a user ever needs it.
+
+**Why not build Triton against a newer LLVM instead?**
+Triton supports only the LLVM it pins; any other means patching Triton, and it needs LLVM's NVIDIA and AMD code generators as well.
+
+**Why is the Triton lowering in the plugin and not in `applegpu-opt`?**
+It needs Triton's IR and analyses, which exist only in Triton's process. Keeping it there leaves `applegpu-opt` without any Triton dependency.
 
 **Why read TTGIR instead of TTIR?**
-TTGIR carries Triton's layout decisions: which thread holds which elements. Reading TTIR would mean redoing all of those decisions ourselves.
+TTGIR carries Triton's layout decisions: which thread holds which elements. Starting from TTIR would mean redoing all of those decisions ourselves.
 
 **Why reuse Triton's passes instead of writing our own?**
 They are mature and tested: contiguity analysis, coalescing and layout propagation alone are about 4,000 lines. Rewriting them would add bugs and take months. All of Triton's target-independent passes run unchanged with an Apple target.
@@ -56,42 +62,30 @@ They target hardware Apple GPUs lack: clusters, TMA, tensor memory, warp special
 **Why put the Apple matmul pass in a Triton plugin?**
 Attention needs the matrix layout to flow through softmax, reductions and loops. Triton's own layout propagation already does that for any layout that implements its interfaces, and a plugin can provide one. The alternatives were worse: rewriting propagation ourselves, or copying about 10,000 lines of Triton code and keeping them in sync.
 
-**Doesn't the plugin break "never link Triton"?**
-It narrows it. The plugin is a separate library built against Triton's LLVM and loaded only into Triton's process. `applegpu-opt` and our LLVM still never meet Triton.
-
 **What does the plugin cost?**
 Triton must be built with `TRITON_EXT_ENABLED=1`. The plugin must be rebuilt for every Triton release, with small source fixes most of the time. The tier 2 tests catch breakage after an upgrade.
 
-**How is the plugin built without mixing the two LLVMs?**
-As a separate CMake project that takes Triton's source folder, LLVM, compiler and version from Triton's own build cache. Our build starts it as an external project, so it builds with `check-applegpu`, but nothing of ours links it.
+**Why must the plugin not contain its own copy of MLIR?**
+Triton's process already has MLIR, and MLIR keeps global registries of dialects, passes and options. A second copy in the same process registers everything twice and crashes. The plugin links our code and takes MLIR from the process that loads it.
+
+**Does anything cross as text?**
+Not when compiling a Triton kernel. The plugin runs everything from Triton's passes to the MSL emitter in Triton's process and hands back the MSL as a string attribute on the module, as Triton's NVIDIA backend hands back PTX. Text is for tests, debugging and other frontends: the plugin can print its per-thread IR, which our tools parse and verify, and we control that syntax, so Triton changes do not reach it.
+
+**Why not MLIR bytecode between the two?**
+With one shared LLVM, bytecode would work, and it parses faster than text. But compiling in-process removes the need to cross at all, and text stays readable for tests.
 
 **Why not patch Triton?**
 A patched Triton is a fork to maintain forever. The plugin interface exists so that out-of-tree backends do not need one.
 
 ## Layouts and lowering
 
-**Why keep a tile level instead of lowering Triton straight to threads?**
-Every performance decision is a layout decision: wide loads, coalescing, reductions inside one SIMD-group, matrix units. Splitting into threads first fixes the worst layout and throws away the information needed to choose a better one.
-
-**Why mirror Triton's blocked and slice layouts instead of designing our own format?**
-Our input is Triton, so a layout in our IR then reads the same as in TTGIR, and Triton's tools work on it. It also covers everything vLLM's kernels need.
-
-**Why our own tile-level ops instead of keeping Triton's ops?**
-Triton's ops arrive as opaque generic ops that `applegpu-opt` cannot verify, and the rest of our pipeline should not depend on Triton's op set. We define ops only for what is specific to Triton (pointer arithmetic, masked loads and stores, dots, reductions, layout conversions); standard `arith`, `math` and `scf` ops work on our tensors directly.
+**Why lower from Triton's layouts straight to per-thread code?**
+Triton's layouts already are the tile level: every performance decision (wide loads, coalescing, reductions inside one SIMD-group, matrix units) is made there by Triton's passes and our plugin. A tile level of our own would only repeat them.
 
 **Why a pointer type of our own?**
-Triton computes on tensors of pointers (`tt.addptr`), which matches MSL's `device` pointer arithmetic directly. `memref` would force every address into a base plus index form that Triton kernels do not have.
+Triton computes on pointers (`tt.addptr`, pointer tables), which matches MSL's `device` pointer arithmetic directly. `memref` would force every address into a base plus index form that Triton kernels do not have. Standard MLIR frontends keep using `memref`; the emitter supports both.
 
-**How do we read Triton's layouts without Triton's dialect?**
-With a small hand-written parser for the few attribute and type forms we accept. Anything else fails with `emitError`, so a Triton change that alters the text is reported, never misread.
-
-**Why copy Triton's `LinearLayout` instead of writing our own coordinate math?**
-Every layout (blocked, slice, dot operand, the Apple matrix layout) needs "which register of which lane holds which element", and `LinearLayout` answers that for all of them in one representation. It is self-contained, compiles against our LLVM unchanged, and is stable upstream. Copying it is the cheap part of vendoring; the expensive part, layout propagation, stays in Triton.
-
-**Why C++20?**
-The copied `LinearLayout` code uses it, and Triton builds as C++20. Switching the project keeps the copy unchanged, so upstream fixes apply cleanly.
-
-**Why one distribution pass instead of several stages?**
+**Why one lowering pass instead of several stages?**
 Intel's Triton backend removed its staged lowering once the single-step path matched its performance. Stages can be added later if they pay off.
 
 **Why is the `simdgroup_matrix` fragment layout treated as known, not opaque?**
@@ -126,8 +120,8 @@ On MPS, `data_ptr()` loses the `MTLBuffer` a Metal kernel needs. The tensor stil
 **Why ship one `applegpu-compile` binary instead of `applegpu-opt` and `applegpu-translate`?**
 Each tool links LLVM statically, so shipping two would package LLVM twice.
 
-**Why call the compiler as a subprocess from Triton?**
-It keeps Triton's LLVM and ours in separate processes. The cost is a few milliseconds per kernel compile, which Triton caches.
+**Why compile Triton kernels in Triton's process instead of calling a compiler?**
+No subprocess, no printing and no parsing, and the Triton package needs no separate compiler. The plugin links our passes and emitter anyway, so this costs one pass that stores the MSL on the module. The saving is about 10 to 20 ms per kernel on the first compile, which adds up when vLLM compiles a few dozen kernels at start.
 
 **Why is the GPU test runner Objective-C++ and not Swift?**
 CMake builds it with the same toolchain as the rest of the project, with no Swift dependency, and the Metal API is the same from either language.
@@ -135,7 +129,7 @@ CMake builds it with the same toolchain as the rest of the project, with no Swif
 ## Build and tests
 
 **Why put LLVM and Triton in `deps/` inside the repository instead of using submodules?**
-Neither is needed by every clone: tier 1 tests and CI do not need Triton, and LLVM can come from an existing build. A submodule pins the source but not the build, which is the slow part. `utils/setup.sh` and `utils/pins.txt` pin both and set them up in one command.
+Neither is needed by every clone: tier 1 tests and CI do not need Triton, and LLVM can be Triton's prebuilt download or an existing build. A submodule pins the source but not the build, which is the slow part. `utils/setup.sh` and `utils/pins.txt` pin both and set them up in one command.
 
 **Why pin Triton 3.9 rather than 3.8?**
 vLLM's kernels compile with 3.9, and the only API difference that matters (`tl.advance`) is unused by vLLM. 3.9 also has the plugin interfaces for out-of-tree layouts.

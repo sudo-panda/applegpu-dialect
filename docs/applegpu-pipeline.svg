@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1170 690" width="1170" height="690" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
   <title id="title">AppleGPU compilation pipeline</title>
-  <desc id="desc">A Triton kernel first goes through Triton's own target-independent passes in Triton's process, such as convert_to_ttgpuir, coalesce, remove_layout_conversions and optimize_dot_operands, plus apple-accelerate-matmul from our Triton plugin, which gives dot products the simdgroup_matrix layout; Triton's passes then propagate it. The resulting TTGIR crosses to applegpu-opt as generic text; applegpu-opt never links Triton. convert-ttgir-to-applegpu reads the Triton and plugin layouts into the AppleGPU dialect's own layout attributes. Tile-level passes make the Apple choices Triton cannot, such as tuning by GPU family and, later, M5 tensor ops. applegpu-distribute then splits the tile level into per-thread gpu, applegpu and standard operations: index math, simd_sum, simdgroup_matrix and threadgroup memory. Standard MLIR GPU code enters at that per-thread level. applegpu-translate emits MSL, which the Metal toolchain compiles to AIR and a metallib; the Metal runtime launches it on PyTorch's MPS stream without copies. Later, an AIR lowering pass produces the LLVM dialect with AIR intrinsics, and an AIR emitter serializes it to .air, checked against the MSL path.</desc>
+  <desc id="desc">A Triton kernel goes through Triton's own target-independent passes in Triton's process, such as convert_to_ttgpuir, coalesce, remove_layout_conversions and optimize_dot_operands, plus apple-accelerate-matmul from our Triton plugin, which gives dot products the simdgroup_matrix layout; Triton's passes then propagate it. The plugin's convert-triton-to-applegpu then lowers the kernel to per-thread gpu, applegpu and standard operations, using Triton's own LinearLayout, alignment analysis, threadgroup-memory allocation and barrier placement. This Triton part is optional and runs only in Triton's process. Its per-thread IR goes on to our applegpu passes and the MSL emitter, which the plugin links and runs in the same process; the per-thread IR can also be printed as text for applegpu-opt. Our tools never link Triton. Standard MLIR GPU code enters applegpu-opt directly. applegpu passes make the Apple choices by GPU family, and applegpu-translate emits MSL, which the Metal toolchain compiles to AIR and a metallib; the Metal runtime launches it on PyTorch's MPS stream without copies. Later, an AIR lowering pass produces the LLVM dialect with AIR intrinsics, and an AIR emitter serializes it to .air, checked against the MSL path.</desc>
   <style>
     .bg     { fill: #ffffff; }
     .group  { fill: #f6f8fa; stroke: #d0d7de; }
@@ -24,6 +24,7 @@
     .t-opt  { fill: #0969da; }
     .t-tr   { fill: #1a7f37; }
     .t-mtl  { fill: #bc4c00; }
+    .optional { fill: none; stroke: #8250df; stroke-dasharray: 5 4; }
     @media (prefers-color-scheme: dark) {
       .bg     { fill: #0d1117; }
       .group  { fill: #161b22; stroke: #30363d; }
@@ -44,6 +45,7 @@
       .t-opt  { fill: #58a6ff; }
       .t-tr   { fill: #56d364; }
       .t-mtl  { fill: #f0883e; }
+      .optional { stroke: #ab7df8; }
     }
   </style>
   <defs>
@@ -58,10 +60,12 @@
   <rect class="bg" x="0" y="0" width="1170" height="690" rx="8"/>
 
   <!-- Column titles -->
-  <text class="title t-fe" x="140" y="34" text-anchor="middle">Frontends</text>
-  <text class="title mono t-opt" x="485" y="34" text-anchor="middle">applegpu-opt</text>
-  <text class="title mono t-tr" x="785" y="34" text-anchor="middle">applegpu-translate</text>
-  <text class="title t-mtl" x="1045" y="34" text-anchor="middle">Metal toolchain</text>
+  <text class="title t-fe" x="140" y="30" text-anchor="middle">Frontends</text>
+  <text class="title mono t-opt" x="485" y="28" text-anchor="middle">applegpu-opt</text>
+  <text class="note small" x="485" y="44" text-anchor="middle">or the same passes linked into the plugin</text>
+  <text class="title mono t-tr" x="785" y="28" text-anchor="middle">applegpu-translate</text>
+  <text class="note small" x="785" y="44" text-anchor="middle">or the emitter in the plugin</text>
+  <text class="title t-mtl" x="1045" y="30" text-anchor="middle">Metal toolchain</text>
 
   <!-- Column backgrounds (drawn first so arrows sit on top) -->
   <rect class="group" x="340" y="50" width="290" height="580" rx="8"/>
@@ -69,19 +73,30 @@
   <rect class="group" x="940" y="50" width="210" height="580" rx="8"/>
 
   <!-- ===== Frontends ===== -->
+  <!-- The optional Triton part, all in Triton's process -->
+  <rect class="optional" x="18" y="50" width="244" height="380" rx="8"/>
+  <text class="note small t-fe" x="140" y="424" text-anchor="middle">optional, in Triton's process</text>
+
   <rect class="box fe" x="30" y="60" width="220" height="50" rx="6"/>
   <text class="label" x="140" y="82" text-anchor="middle">Triton kernel</text>
   <text class="note" x="140" y="100" text-anchor="middle">@triton.jit, in Python</text>
 
   <rect class="box fe" x="30" y="130" width="220" height="156" rx="6"/>
   <text class="label" x="140" y="152" text-anchor="middle">Triton's own passes</text>
-  <text class="note" x="140" y="170" text-anchor="middle">run in Triton's process</text>
+  <text class="note" x="140" y="170" text-anchor="middle">choose the layouts</text>
   <text class="note mono small" x="140" y="192" text-anchor="middle">TTIR, convert_to_ttgpuir</text>
   <text class="note mono small" x="140" y="208" text-anchor="middle">coalesce</text>
   <text class="note mono small" x="140" y="224" text-anchor="middle">remove_layout_conversions</text>
   <text class="note mono small" x="140" y="240" text-anchor="middle">optimize_dot_operands, …</text>
   <text class="label mono small t-fe" x="140" y="258" text-anchor="middle">+ apple-accelerate-matmul</text>
   <text class="note small" x="140" y="276" text-anchor="middle">(our Triton plugin)</text>
+
+  <rect class="box fe" x="30" y="308" width="220" height="94" rx="6"/>
+  <text class="label mono small t-fe" x="140" y="328" text-anchor="middle">convert-triton-to-applegpu</text>
+  <text class="note small" x="140" y="344" text-anchor="middle">(our Triton plugin)</text>
+  <text class="note small" x="140" y="362" text-anchor="middle">layouts → per-thread code, with</text>
+  <text class="note small" x="140" y="377" text-anchor="middle">Triton's LinearLayout, alignment,</text>
+  <text class="note small" x="140" y="392" text-anchor="middle">memory allocation and barriers</text>
 
   <rect class="box fe" x="30" y="460" width="220" height="90" rx="6"/>
   <text class="label" x="140" y="483" text-anchor="middle">Standard MLIR</text>
@@ -91,24 +106,13 @@
 
   <!-- ===== applegpu-opt ===== -->
   <text class="label t-opt" x="485" y="74" text-anchor="middle">AppleGPU dialect</text>
-  <text class="note" x="485" y="91" text-anchor="middle">tile level: whole-block tensors + layouts</text>
-  <text class="note" x="485" y="107" text-anchor="middle">per-thread level: SIMD-group ops</text>
+  <text class="note" x="485" y="91" text-anchor="middle">per-thread: pointers, SIMD-group ops,</text>
+  <text class="note" x="485" y="107" text-anchor="middle">simdgroup_matrix · no Triton</text>
 
-  <rect class="box opt" x="360" y="175" width="250" height="66" rx="6"/>
-  <text class="label mono" x="485" y="197" text-anchor="middle">convert-ttgir-to-applegpu</text>
-  <text class="note" x="485" y="216" text-anchor="middle">Triton and plugin layouts (as text)</text>
-  <text class="note" x="485" y="232" text-anchor="middle">→ #applegpu layouts</text>
-
-  <rect class="box opt" x="360" y="270" width="250" height="86" rx="6"/>
-  <text class="label" x="485" y="292" text-anchor="middle">Tile-level passes</text>
-  <text class="note" x="485" y="311" text-anchor="middle">Apple choices Triton cannot make:</text>
-  <text class="note" x="485" y="327" text-anchor="middle">tuning by GPU family,</text>
-  <text class="note" x="485" y="343" text-anchor="middle">later M5 tensor ops</text>
-
-  <rect class="box opt" x="360" y="385" width="250" height="66" rx="6"/>
-  <text class="label mono" x="485" y="407" text-anchor="middle">applegpu-distribute</text>
-  <text class="note" x="485" y="426" text-anchor="middle">layout → index math, simd_sum,</text>
-  <text class="note" x="485" y="442" text-anchor="middle">simdgroup_matrix, threadgroup memory</text>
+  <rect class="box opt" x="360" y="322" width="250" height="76" rx="6"/>
+  <text class="label" x="485" y="344" text-anchor="middle">applegpu passes</text>
+  <text class="note" x="485" y="363" text-anchor="middle">Apple choices by GPU family,</text>
+  <text class="note" x="485" y="379" text-anchor="middle">verification of every input</text>
 
   <rect class="box" x="360" y="480" width="250" height="50" rx="6"/>
   <text class="label" x="485" y="502" text-anchor="middle">Per-thread IR</text>
@@ -149,22 +153,21 @@
   <text class="label" x="1045" y="441" text-anchor="middle">Apple GPU</text>
 
   <!-- ===== Arrows ===== -->
-  <!-- Triton: kernel → Triton's passes → applegpu-opt, centre to centre -->
+  <!-- Triton: kernel → Triton's passes → lowering → applegpu-opt -->
   <path class="edge" d="M140,110 L140,126" marker-end="url(#arrow)"/>
-  <path class="edge" d="M250,208 L356,208" marker-end="url(#arrow)"/>
-  <text class="note small" x="303" y="184" text-anchor="middle">TTGIR as</text>
-  <text class="note small" x="303" y="198" text-anchor="middle">generic text</text>
-  <text class="note small" x="303" y="226" text-anchor="middle">applegpu-opt</text>
-  <text class="note small" x="303" y="240" text-anchor="middle">never links</text>
-  <text class="note small" x="303" y="254" text-anchor="middle">Triton</text>
+  <path class="edge" d="M140,286 L140,304" marker-end="url(#arrow)"/>
+  <path class="edge" d="M250,345 L356,345" marker-end="url(#arrow)"/>
+  <text class="note small" x="303" y="321" text-anchor="middle">per-thread IR,</text>
+  <text class="note small" x="303" y="335" text-anchor="middle">in-process</text>
 
-  <!-- Standard MLIR enters at the per-thread level -->
-  <path class="edge" d="M250,505 L356,505" marker-end="url(#arrow)"/>
+  <!-- Standard MLIR enters applegpu-opt directly -->
+  <path class="edge" d="M250,505 L300,505 Q310,505 310,495 L310,385 Q310,375 320,375 L356,375" marker-end="url(#arrow)"/>
+  <text class="note small" x="303" y="438" text-anchor="end">our tools</text>
+  <text class="note small" x="303" y="452" text-anchor="end">never link</text>
+  <text class="note small" x="303" y="466" text-anchor="end">Triton</text>
 
   <!-- within applegpu-opt -->
-  <path class="edge" d="M485,241 L485,266" marker-end="url(#arrow)"/>
-  <path class="edge" d="M485,356 L485,381" marker-end="url(#arrow)"/>
-  <path class="edge" d="M485,451 L485,476" marker-end="url(#arrow)"/>
+  <path class="edge" d="M485,398 L485,476" marker-end="url(#arrow)"/>
   <path class="edge-later" d="M485,530 L485,567" marker-end="url(#arrow-later)"/>
 
   <!-- applegpu-opt into applegpu-translate -->
@@ -189,4 +192,7 @@
 
   <rect class="later" x="150" y="652" width="28" height="18" rx="4"/>
   <text class="note" x="186" y="665">Later: AIR path</text>
+
+  <rect class="optional" x="310" y="652" width="28" height="18" rx="4"/>
+  <text class="note" x="346" y="665">Optional: Triton support (APPLEGPU_ENABLE_TRITON)</text>
 </svg>
