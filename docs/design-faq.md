@@ -62,6 +62,9 @@ It narrows it. The plugin is a separate library built against Triton's LLVM and 
 **What does the plugin cost?**
 Triton must be built with `TRITON_EXT_ENABLED=1`. The plugin must be rebuilt for every Triton release, with small source fixes most of the time. The tier 2 tests catch breakage after an upgrade.
 
+**How is the plugin built without mixing the two LLVMs?**
+As a separate CMake project that takes Triton's source folder, LLVM, compiler and version from Triton's own build cache. Our build starts it as an external project, so it builds with `check-applegpu`, but nothing of ours links it.
+
 **Why not patch Triton?**
 A patched Triton is a fork to maintain forever. The plugin interface exists so that out-of-tree backends do not need one.
 

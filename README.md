@@ -77,7 +77,7 @@ ninja -C build check-applegpu
 
 `ninja -C build mlir-doc` builds the dialect documentation from its TableGen description.
 
-The `cmake` output includes a line `Triton for tests: python='...' triton-opt='...'`. Empty paths mean Triton was not found in `.venv` and `deps/triton`. To use a Triton somewhere else, pass `-DAPPLEGPU_TRITON_PYTHON=<python that can import triton>` and `-DAPPLEGPU_TRITON_OPT=<triton-opt from the same build>`.
+The `cmake` output includes the lines `Triton build: '...'` and `Triton for tests: python='...' triton-opt='...' plugin='...'`. Empty paths mean Triton was not found in `.venv` and `deps/triton`. When Triton is found, the build also compiles our Triton plugin (`triton-plugin/`) with Triton's own LLVM and compiler. To use a Triton somewhere else, pass `-DAPPLEGPU_TRITON_BUILD_DIR=<Triton's CMake build folder>`, `-DAPPLEGPU_TRITON_PYTHON=<python that can import triton>` and, if needed, `-DAPPLEGPU_TRITON_OPT=<triton-opt from the same build>`.
 
 ## Without the script
 
