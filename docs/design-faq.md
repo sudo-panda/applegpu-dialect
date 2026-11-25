@@ -13,6 +13,9 @@ Triton is the first frontend, not the only one. Keeping the backend independent 
 **Why is vLLM the target?**
 The goal is an LLM running through Triton on a Mac GPU. The popular laptop tools (Ollama, LM Studio, llama.cpp, MLX) do not use Triton. vLLM is the most popular framework built on Triton kernels, and vllm-metal is its official Apple silicon plug-in.
 
+**Why not build a tile IR like NVIDIA's CUDA Tile IR first?**
+CUDA Tile IR can leave threads and layouts out because NVIDIA's compiler chooses them behind it. Apple's compiler only takes per-thread MSL, so a Metal tile IR needs a layout engine in front of it, and Triton's passes are that engine. Building the Triton path first builds everything a tile IR would sit on; the tile IR is planned as a later front layer over it.
+
 **Why must attention and MoE run through Triton, not only vLLM's small kernels?**
 Otherwise Triton would only run bookkeeping, while the model's real work stays in hand-written Metal code. vLLM's Triton attention and fused MoE kernels are where the computation is, and both use matrix multiplication.
 

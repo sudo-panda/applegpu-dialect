@@ -11,6 +11,8 @@ An out-of-tree MLIR dialect and backend for Apple GPUs. Frontends are lowered in
 - Never edit `deps/`: it holds LLVM and Triton as set up by `utils/setup.sh`.
 - Use `git mv` for every move or rename, so history is kept.
 - A refactor must not change behavior. The same tests must pass before and after, except tests deleted together with the code they cover.
+- Every commit that adds or changes behavior includes its test, or the test lands in an earlier commit (test first, then the feature). Never a feature in one commit and its test in a later one; when a feature cannot be tested before other wiring exists, they go in one commit.
+- Try to keep the feature added in a commit as tiny as possible without adding too much scaffolding. And only one feature per new commit.
 
 ## Design rules
 
@@ -204,3 +206,8 @@ Upstream MLIR (`mlir/` in LLVM) is the reference for structure: `lib/Target/Cpp`
    - The 68 worker kernels as TTGIR use only `#ttg.blocked` and `#ttg.slice` layouts.
    - Kernels with `tt.dot` in vLLM 0.34.0: `kernel_unified_attention` in `vllm/v1/attention/ops/triton_unified_attention.py` and `fused_moe_kernel` in `vllm/model_executor/layers/fused_moe/fused_moe.py` (shapes in plan steps 1.14 and 1.15). With fp16 and bf16, all of them compile to TTIR with Triton 3.9. They use `tt.dot` with f32 accumulators, row reductions, `tl.where` masks and early returns, and no atomics, inline assembly, libdevice or block pointers. Not compiled yet: fp8/int8 KV caches, quantized MoE variants (w8a8, w8a16, GPTQ/AWQ) and the tensor-descriptor paths (CUDA and XPU only).
    - Related projects: `triton-msl` (community, Triton → MSL, claims Triton's `test_core.py` passes, built on Triton 3.7.0) and triton-ext PR #127 in `triton-lang` (a minimal Apple GPU backend, TTGIR → MSL). Both are Triton-only backends; this project is an MLIR dialect and backend usable by any frontend.
+6. Later project, after vLLM's attention and fused MoE run (plan steps 1.14 and 1.15): a Metal tile IR, a stable, documented tile-level IR for Apple GPUs, in the spirit of NVIDIA's CUDA Tile IR (`cuda_tile`, an open MLIR dialect with a specification and versioned bytecode).
+   - Why: Apple has no tile-level compiler, so Metal kernels are written by hand. A stable tile IR would be a target for frontends other than Triton (a Python tile DSL, Julia, MLX custom kernels, or `cuda_tile` programs), and they would depend on a spec we control instead of on Triton's internals.
+   - How: a thin front layer over the Triton path, not a second layout engine. Tile IR is lowered to Triton's tile level, then goes through Triton's passes, our plugin, `convert-triton-to-applegpu`, the `applegpu` passes and the MSL emitter. CUDA Tile IR can leave threads out because NVIDIA's compiler chooses layouts behind it; Apple's compiler only takes per-thread MSL, so those choices must be made before MSL, and Triton's passes already make them. Triton kernels keep going straight from TTGIR: lowering Triton to a tile IR would skip its layout passes. On M5, tile matmuls can map to Metal 4's `matmul2d`.
+   - Open question: this layering makes the tile IR depend on Triton's passes, while the design rules keep users without Triton untouched by Triton. Either the tile IR ships as part of the optional Triton support, or it needs its own layout engine (the expensive option).
+   - First experiment: read `cuda_tile` IR and map its ops onto Triton's tile level, to see how much fits directly.
