@@ -168,6 +168,10 @@ Upstream MLIR (`mlir/` in LLVM) is the reference for structure: `lib/Target/Cpp`
 
    Software pipelining (prefetching the next loop iteration into registers) is added only if measurements on steps 13–15 show a loss.
 
+   Not planned as steps yet, but not to be forgotten:
+   - Quantized dots: fp8 and int8 inputs, as in vLLM's fp8 KV caches and its w8a8 and w8a16 MoE kernels. Until then they stay FMA dots. `apple-accelerate-matmul` upcasts them to half for `simdgroup_matrix`, as NVIDIA's `decomposeMixedModeDotOp` does for types its older GPUs lack; every fp8 and int8 value is exact in half. int8 also needs an exact int32 accumulation plan, because f32 holds integers exactly only up to 2^24 (for example, f32 accumulation per K block added into int32 between blocks). Mixed inputs (fp8 × fp16) upcast the narrower side.
+   - M5: Metal 4 tensor operations (MetalPerformancePrimitives `matmul2d`) with their own opaque `cooperative_tensor` layout, a faster path on M5 beside `simdgroup_matrix`. Check which input types they accept (int8, and whether fp8).
+   - fp16 accumulators: `simdgroup_matrix<half>` can accumulate in half; add it if a kernel needs it.
 2. Test tiers, using lit features so each machine reports what it cannot run as unsupported:
    - Tier 1, no requirements and no Triton: per-thread `applegpu` IR → `applegpu-opt` → `applegpu-translate`, checked with FileCheck, including saved outputs of `convert-triton-to-applegpu` as fixtures.
    - Tier 2, `triton`: Triton kernels through Triton's passes and the plugin, checked with FileCheck and compared with the tier 1 fixtures, to catch Triton upgrades (layouts, Python pass names, plugin API).

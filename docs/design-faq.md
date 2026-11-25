@@ -91,6 +91,9 @@ Intel's Triton backend removed its staged lowering once the single-step path mat
 **Why is the `simdgroup_matrix` fragment layout treated as known, not opaque?**
 It was measured on the GPU: each lane holds two adjacent elements of one row, in a pattern that is a plain permutation of bits, so it is a Triton linear layout. MLX relies on the same mapping on every chip generation. Knowing it lets attention's softmax work on the fragments in registers instead of going through threadgroup memory.
 
+**What happens to fp8 and int8 dots?**
+For now they stay plain FMA dots: correct, but slow. The plan is to upcast them to half for `simdgroup_matrix`, as NVIDIA's Triton backend does for types its older GPUs lack: every fp8 and int8 value is exact in half, the conversion is cheap next to the multiply, and memory traffic stays at the narrow size. On M5, Metal 4's tensor operations may take some of these types directly.
+
 **Why is M5's matrix layout handled separately?**
 M5's matrix units are reached through Metal 4 tensor operations, whose fragment layout Apple defines as opaque and device specific. It gets its own layout, used only through Apple's library. `simdgroup_matrix` remains the path that works on every chip.
 
