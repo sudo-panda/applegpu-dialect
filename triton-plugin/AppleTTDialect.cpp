@@ -19,6 +19,101 @@ using namespace mlir::triton::gpu;
 namespace mlir::apple_tt {
 namespace {
 
+// Triton asks the dialect of a tensor's layout how layouts change through
+// ops (reduce, expand_dims, trans, ...). TritonGPU's answers work from the
+// LinearLayout of any distributed layout, so every question is forwarded.
+struct InferLayout : public triton::DialectInferLayoutInterface {
+  using DialectInferLayoutInterface::DialectInferLayoutInterface;
+
+  const triton::DialectInferLayoutInterface &ttg() const {
+    auto *dialect =
+        getDialect()->getContext()->getLoadedDialect<TritonGPUDialect>();
+    return *dialect
+                ->getRegisteredInterface<triton::DialectInferLayoutInterface>();
+  }
+
+  LogicalResult
+  inferTransOpEncoding(Attribute operandEncoding, ArrayRef<int64_t> shape,
+                       ArrayRef<int32_t> order, Attribute &resultEncoding,
+                       std::optional<Location> loc) const override {
+    return ttg().inferTransOpEncoding(operandEncoding, shape, order,
+                                      resultEncoding, loc);
+  }
+  LogicalResult
+  inferReduceOpEncoding(Attribute operandEncoding, unsigned axis,
+                        Attribute &resultEncoding,
+                        std::optional<Location> loc) const override {
+    return ttg().inferReduceOpEncoding(operandEncoding, axis, resultEncoding,
+                                       loc);
+  }
+  LogicalResult
+  inferExpandDimsOpEncoding(Attribute operandEncoding, unsigned axis,
+                            Attribute &resultEncoding,
+                            std::optional<Location> loc) const override {
+    return ttg().inferExpandDimsOpEncoding(operandEncoding, axis,
+                                           resultEncoding, loc);
+  }
+  LogicalResult
+  verifyBroadcastOpEncoding(RankedTensorType srcType,
+                            RankedTensorType dstType) const override {
+    return ttg().verifyBroadcastOpEncoding(srcType, dstType);
+  }
+  LogicalResult inferDotOpEncoding(Attribute operandEncoding, unsigned opIdx,
+                                   Attribute retEncoding,
+                                   std::optional<Location> loc) const override {
+    return ttg().inferDotOpEncoding(operandEncoding, opIdx, retEncoding, loc);
+  }
+  LogicalResult
+  inferReshapeOpEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
+                         ArrayRef<int64_t> dstShape, Attribute &dstEnc,
+                         bool allowReorder,
+                         std::optional<Location> loc) const override {
+    return ttg().inferReshapeOpEncoding(srcShape, srcEnc, dstShape, dstEnc,
+                                        allowReorder, loc);
+  }
+  LogicalResult verifyLayoutsAreEqual(ArrayRef<int64_t> shape,
+                                      Attribute expected, Attribute got,
+                                      std::optional<Location> loc,
+                                      bool ignoreRegBroadcast) const override {
+    return ttg().verifyLayoutsAreEqual(shape, expected, got, loc,
+                                       ignoreRegBroadcast);
+  }
+  LogicalResult
+  inferDefaultJoinOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+                             ArrayRef<int64_t> shape,
+                             std::optional<Location> loc) const override {
+    return ttg().inferDefaultJoinOpEncoding(srcEnc, dstEnc, shape, loc);
+  }
+  LogicalResult
+  inferSplitOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+                       ArrayRef<int64_t> shape,
+                       std::optional<Location> loc) const override {
+    return ttg().inferSplitOpEncoding(srcEnc, dstEnc, shape, loc);
+  }
+  LogicalResult
+  verifyDotOpEncodingCompatibility(Operation *op, Attribute operandEncodingA,
+                                   Attribute operandEncodingB) const override {
+    return ttg().verifyDotOpEncodingCompatibility(op, operandEncodingA,
+                                                  operandEncodingB);
+  }
+  LogicalResult verifyDotScaledOpEncodingCompatibility(
+      Operation *op, Attribute operandEncodingA, Attribute operandEncodingB,
+      Attribute scaleEncodingA, Attribute scaleEncodingB) const override {
+    return ttg().verifyDotScaledOpEncodingCompatibility(
+        op, operandEncodingA, operandEncodingB, scaleEncodingA, scaleEncodingB);
+  }
+  LogicalResult verifyCatOpEncodingCompatibility(Operation *op) const override {
+    return ttg().verifyCatOpEncodingCompatibility(op);
+  }
+  LogicalResult
+  inferFp4ToFpOpEncoding(ArrayRef<int64_t> shape, int axis, Attribute inEnc,
+                         Attribute &outEnc, bool fwdInference,
+                         std::optional<Location> loc) const override {
+    return ttg().inferFp4ToFpOpEncoding(shape, axis, inEnc, outEnc,
+                                        fwdInference, loc);
+  }
+};
+
 // Triton also asks the layout's dialect to check each tensor layout against
 // its module: rank, threads per warp, ttg.num-warps and CTAs. TritonGPU's
 // checks work from the LinearLayout too, so both questions are forwarded.
@@ -75,7 +170,7 @@ void AppleTTDialect::initialize() {
 #define GET_ATTRDEF_LIST
 #include "AppleTTAttrs.cpp.inc"
       >();
-  addInterfaces<VerifyLayout>();
+  addInterfaces<InferLayout, VerifyLayout>();
 }
 
 LogicalResult

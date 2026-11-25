@@ -22,3 +22,22 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32,
     tt.return %y : tensor<16x16xf32, #mma>
   }
 }
+
+// -----
+
+// tt.reduce infers its result layout through the operand layout's dialect,
+// which forwards to TritonGPU: a reduction along axis 1 gives
+// #ttg.slice<{dim = 1, ...}>, so a result declared with dim = 0 is rejected.
+#mma = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>
+module attributes {"ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32, "ttg.num-ctas" = 1 : i32} {
+  tt.func @wrong_reduce_layout(%x: tensor<16x16xf32, #mma>) {
+    // expected-error @+2 {{inferred type(s) 'tensor<16xf32, #ttg.slice<{dim = 1, parent = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>}>>' are incompatible with return type(s) of operation}}
+    // expected-error @+1 {{failed to infer returned types}}
+    %max = "tt.reduce"(%x) <{axis = 1 : i32}> ({
+    ^bb0(%a: f32, %b: f32):
+      %m = arith.maxnumf %a, %b : f32
+      tt.reduce.return %m : f32
+    }) : (tensor<16x16xf32, #mma>) -> tensor<16xf32, #ttg.slice<{dim = 0, parent = #mma}>>
+    tt.return
+  }
+}
