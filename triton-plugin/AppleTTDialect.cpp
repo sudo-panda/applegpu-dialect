@@ -72,6 +72,12 @@ SmallVector<unsigned> SimdgroupMmaEncodingAttr::getRepOrder() const {
   return getMatrixOrder(getWarpsPerCTA().size(), /*rowMajor=*/true);
 }
 
+SmallVector<unsigned>
+SimdgroupMmaEncodingAttr::getRepOrderForOperand(int opIdx) const {
+  return getOrderForDotOperand(opIdx, getWarpsPerCTA().size(),
+                               /*kContig=*/true);
+}
+
 LinearLayout
 SimdgroupMmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
   MLIRContext *ctx = getContext();
@@ -84,6 +90,28 @@ SimdgroupMmaEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
       identityStandardND(kWarp, getWarpsPerCTA(), /*order=*/{1, 0})
           .transposeOuts(repDims);
   return combineCtaCgaWithShape(tile * warps, getCGALayout(), shape);
+}
+
+LinearLayout SimdgroupMmaEncodingAttr::dotOperandToLinearLayout(
+    Attribute dotOp, ArrayRef<int64_t> shape) const {
+  auto dotEnc = cast<DotOperandEncodingAttr>(dotOp);
+  MLIRContext *ctx = getContext();
+  auto dims = standardOutDimNames(ctx, 2);
+  // K first for both operands, as getRepOrderForOperand says.
+  auto repDims = repOrderedDims(ctx, getRepOrderForOperand(dotEnc.getOpIdx()));
+  StringAttr kWarp = StringAttr::get(ctx, "warp");
+  unsigned warpsM = getWarpsPerCTA()[0], warpsN = getWarpsPerCTA()[1];
+  LinearLayout tile = fragment(ctx, dims[0], dims[1]).transposeOuts(repDims);
+  // Same warp bit order as the result: N bits first, then M bits. A (M x K)
+  // is the same for every SIMD-group in a row, B (K x N) in a column.
+  LinearLayout warps =
+      dotEnc.getOpIdx() == 0
+          ? LinearLayout::zeros1D(warpsN, kWarp, dims[1]) *
+                LinearLayout::identity1D(warpsM, kWarp, dims[0])
+          : LinearLayout::identity1D(warpsN, kWarp, dims[1]) *
+                LinearLayout::zeros1D(warpsM, kWarp, dims[0]);
+  return combineCtaCgaWithShape(tile * warps.transposeOuts(repDims),
+                                dotEnc.getCGALayout(), shape);
 }
 
 } // namespace mlir::apple_tt

@@ -1,4 +1,5 @@
-// Which lane holds which element of #apple_tt.simdgroup_mma, printed by Triton's triton-tensor-layout ("T<lane>:<register>",
+// Which lane holds which element of #apple_tt.simdgroup_mma and its dot
+// operands, printed by Triton's triton-tensor-layout ("T<lane>:<register>",
 // "|" between SIMD-groups that hold the same element). The 8x8 fragment is
 // the mapping measured on the GPU: each lane holds 2 adjacent elements of
 // one row.
@@ -23,11 +24,35 @@
 // WARPS: {{\[\[}} T0:0, {{.*}} T9:1, T32:0, {{.*}} T41:1]
 // WARPS: [ T64:0, {{.*}} T73:1, T96:0, {{.*}} T105:1]
 
+// Operand A (M x K) is shared by the SIMD-groups of one row (0 and 1),
+// operand B (K x N) by those of one column (0 and 2).
+// RUN: env TRITON_PLUGIN_PATHS=%apple_triton_plugin %triton_tensor_layout \
+// RUN:   -l "#ttg.dot_op<{opIdx = 0, parent = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>}>" \
+// RUN:   -t "tensor<16x8xf16>" | FileCheck %s --check-prefix=OPA
+// OPA: {{\[\[}} T0:0| T32:0,   T0:1| T32:1,   T1:0| T33:0,
+// RUN: env TRITON_PLUGIN_PATHS=%apple_triton_plugin %triton_tensor_layout \
+// RUN:   -l "#ttg.dot_op<{opIdx = 1, parent = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>}>" \
+// RUN:   -t "tensor<8x16xf16>" | FileCheck %s --check-prefix=OPB
+// OPB: {{\[\[}} T0:0| T64:0,   T0:1| T64:1,   T1:0| T65:0,
+
 // A tensor bigger than the pattern repeats it in registers, in the order
-// getRepOrder() gives: columns first. Thread 0's register 2 is column 16,
-// register 4 is row 16.
+// getRepOrder() and getRepOrderForOperand() give. For the result, columns
+// first: thread 0's register 2 is column 16, register 4 is row 16.
 // RUN: env TRITON_PLUGIN_PATHS=%apple_triton_plugin %triton_tensor_layout \
 // RUN:   -l "#apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>" -t "tensor<32x32xf32>" \
 // RUN:   | FileCheck %s --check-prefix=REPEAT
 // REPEAT: {{\[\[}} T0:0, {{.*}} T41:1, T0:2, T0:3, {{.*}} T41:3]
 // REPEAT: [ T0:4, T0:5, {{.*}} T41:6, T41:7]
+
+// Operands repeat along K first: K is the column for A, the row for B. A's
+// pattern is 16 x 8 here, so it repeats along both; register 2 is the next
+// 8 columns (K), and only register 8 moves down to row 16.
+// RUN: env TRITON_PLUGIN_PATHS=%apple_triton_plugin %triton_tensor_layout \
+// RUN:   -l "#ttg.dot_op<{opIdx = 0, parent = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>}>" \
+// RUN:   -t "tensor<32x32xf16>" | FileCheck %s --check-prefix=OPA_K
+// OPA_K: {{\[\[}} T0:0| T32:0, {{.*}} T9:1| T41:1, T0:2| T32:2, {{.*}} T9:3| T41:3, T0:4| T32:4,
+// OPA_K: [ T0:8| T32:8, T0:9| T32:9,
+// RUN: env TRITON_PLUGIN_PATHS=%apple_triton_plugin %triton_tensor_layout \
+// RUN:   -l "#ttg.dot_op<{opIdx = 1, parent = #apple_tt.simdgroup_mma<{warpsPerCTA = [2, 2]}>}>" \
+// RUN:   -t "tensor<32x16xf16>" | FileCheck %s --check-prefix=OPB_K
+// OPB_K: [ T0:2| T64:2, T0:3| T64:3,

@@ -18,7 +18,10 @@ def AppleTT_SimdgroupMmaEncodingAttr
     : AttrDef<AppleTT_Dialect, "SimdgroupMmaEncoding", [
         DeclareAttrInterfaceMethods<LayoutEncodingTrait, ["getCGALayout"]>,
         DeclareAttrInterfaceMethods<DistributedEncodingTrait,
-                                    ["getRepOrder", "toLinearLayout"]>]> {
+                                    ["getRepOrder", "toLinearLayout"]>,
+        DeclareAttrInterfaceMethods<MmaEncodingTrait,
+                                    ["getRepOrderForOperand",
+                                     "dotOperandToLinearLayout"]>]> {
   let mnemonic = "simdgroup_mma";
   let summary = "Result layout of a dot computed with simdgroup_matrix<T, 8, 8>";
   let description = [{
@@ -28,6 +31,11 @@ def AppleTT_SimdgroupMmaEncodingAttr
     column bit 2 and row bit 2 (measured on the GPU; the same mapping as
     MLX's get_coord). SIMD-groups are arranged as warpsPerCTA, row-major, and
     the pattern repeats over the tensor in registers.
+
+    Dot operands with this parent use the same fragment mapping, with rows
+    and columns being (M, K) for operand 0 and (K, N) for operand 1. Each
+    operand is replicated across the SIMD-groups that share its rows (A) or
+    columns (B).
   }];
   let parameters = (ins ArrayRefParameter<"unsigned">:$warpsPerCTA);
   let assemblyFormat = "`<` `{` `warpsPerCTA` `=` `[` $warpsPerCTA `]` `}` `>`";
