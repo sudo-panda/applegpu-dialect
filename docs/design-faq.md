@@ -143,8 +143,11 @@ vLLM's kernels compile with 3.9, and the only API difference that matters (`tl.a
 **Why Python 3.13?**
 vllm-metal supports only Python 3.12 and 3.13.
 
-**Why does CI cache the LLVM and Triton builds?**
-Building LLVM takes hours and Triton about half an hour. Keying the cache on `utils/pins.txt` rebuilds them only when a pin changes.
+**Why does CI cache the LLVM download and the Triton build?**
+Downloading LLVM is about 400 MB and building Triton about half an hour. Keying the cache on `utils/pins.txt` repeats them only when a pin changes.
+
+**Why does `--no-triton` still need anything from Triton?**
+Our one LLVM is the one Triton names, so even a build without Triton reads Triton's `cmake/llvm-info.json` for the commit and checksum. It is one small file; nothing else of Triton is fetched or built.
 
 **Why three test tiers?**
 So every machine runs what it can and reports the rest as unsupported. Saved IR fixtures need nothing, regenerating them needs Triton, and end-to-end runs need a Mac GPU. GitHub's hosted runners cover the first two; contributors' Macs cover the third.

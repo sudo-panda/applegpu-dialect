@@ -3,24 +3,30 @@
 # tests. Dependencies go into deps/ and the Python venv into .venv (both
 # ignored by git), at the versions in utils/pins.txt:
 #
-#   deps/llvm-project, deps/llvm-build   LLVM and MLIR (about 12 GB, an hour or more)
-#   deps/triton                          Triton (about 7 GB, ~30 min)
-#   .venv                                Python venv with Triton installed (editable)
-#   deps/vllm-metal                      with --with-vllm: vllm-metal, installed
-#                                        (editable) into .venv with vLLM and torch
-#   build/                               this project
+#   .venv                     Python venv: lit (requirements.txt), and Triton
+#                             (editable) unless --no-triton
+#   deps/triton               Triton (about 7 GB, ~30 min)
+#   LLVM and MLIR             the prebuilt LLVM that Triton's TRITON_TAG uses
+#                             (its cmake/llvm-info.json): Triton's own copy in
+#                             ~/.triton/llvm when it is there, otherwise
+#                             downloaded into deps/llvm-<hash>-<platform>-<build>
+#   deps/vllm-metal           with --with-vllm: vllm-metal, installed
+#                             (editable) into .venv with vLLM and torch
+#   build/                    this project
 #
 # Every step is skipped or incremental when it is already done, so rerunning
 # the script is fast. After changing utils/pins.txt, rerun it to update.
 #
 # Usage: utils/setup.sh [--no-triton] [--with-vllm] [--llvm-build DIR] [--jobs N]
 #   --no-triton        skip Triton; its tests are then reported as unsupported
+#                      (only Triton's llvm-info.json is fetched, to find the LLVM)
 #   --with-vllm        also install PyTorch, vLLM and vllm-metal into .venv
 #                      (macOS on Apple silicon, needs Triton and the Metal toolchain)
-#   --llvm-build DIR   use an existing LLVM/MLIR build instead of deps/llvm-build
-#   --jobs N           parallel jobs for the LLVM and Triton builds (default:
-#                      each build's own). On a 16 GB Mac, use --jobs 4: Triton's
-#                      default, twice the number of cores, can hang it.
+#   --llvm-build DIR   use an LLVM/MLIR build of your own instead; it must be
+#                      built from the LLVM commit Triton uses, with MLIR
+#   --jobs N           parallel jobs for the Triton build (default: its own).
+#                      On a 16 GB Mac, use --jobs 4: Triton's default, twice
+#                      the number of cores, can hang it.
 #
 # Python: set PYTHON to the interpreter for the venv; the default is
 # python<PYTHON_VERSION> from utils/pins.txt, found on PATH.
@@ -56,7 +62,6 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-LLVM_COMMIT=$(pin LLVM_COMMIT)
 TRITON_TAG=$(pin TRITON_TAG)
 PYTHON_VERSION=$(pin PYTHON_VERSION)
 if [[ $with_vllm == 1 ]]; then
@@ -65,48 +70,29 @@ if [[ $with_vllm == 1 ]]; then
   VLLM_METAL_TAG=$(pin VLLM_METAL_TAG)
 fi
 
-for tool in git cmake ninja; do
+for tool in git cmake ninja curl tar; do
   command -v "$tool" >/dev/null || die "'$tool' not found on PATH"
 done
 
-# ---------------------------------------------------------------- LLVM
-if [[ -n $llvm_build ]]; then
-  [[ -d $llvm_build ]] || die "no such directory: $llvm_build"
-  llvm_build=$(cd "$llvm_build" && pwd)
-  step "Using the existing LLVM build in $llvm_build"
-else
-  llvm_src=$DEPS/llvm-project
-  llvm_build=$DEPS/llvm-build
-  if [[ ! -d $llvm_src/.git ]]; then
-    step "Fetching LLVM $LLVM_COMMIT (only that commit)"
-    git init -q "$llvm_src"
-    git -C "$llvm_src" remote add origin https://github.com/llvm/llvm-project.git
-  fi
-  if [[ $(git -C "$llvm_src" rev-parse -q --verify HEAD || true) != "$LLVM_COMMIT" ]]; then
-    git -C "$llvm_src" fetch --depth 1 origin "$LLVM_COMMIT"
-    git -C "$llvm_src" -c advice.detachedHead=false checkout -q FETCH_HEAD
-  fi
-  step "Building LLVM and MLIR in $llvm_build (an hour or more the first time)"
-  # LLVM_PARALLEL_LINK_JOBS=2: linking many tools at once can stall a 16 GB Mac.
-  cmake -G Ninja -S "$llvm_src/llvm" -B "$llvm_build" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DLLVM_ENABLE_PROJECTS=mlir \
-      -DLLVM_TARGETS_TO_BUILD=host \
-      -DLLVM_ENABLE_ASSERTIONS=ON \
-      -DLLVM_PARALLEL_LINK_JOBS=2
-  ninja -C "$llvm_build" ${jobs:+-j "$jobs"}
+# ---------------------------------------------------------------- Python
+python=${PYTHON:-python$PYTHON_VERSION}
+command -v "$python" >/dev/null || die "'$python' not found; install Python $PYTHON_VERSION or set PYTHON"
+found=$("$python" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+[[ $found == "$PYTHON_VERSION" ]] || die "'$python' is Python $found, not $PYTHON_VERSION (set PYTHON)"
+venv=$ROOT/.venv
+py=$venv/bin/python
+if [[ ! -x $py ]]; then
+  step "Creating the venv in $venv with $python"
+  "$python" -m venv "$venv"
 fi
-[[ -f $llvm_build/lib/cmake/mlir/MLIRConfig.cmake ]] || die "$llvm_build has no MLIR build (lib/cmake/mlir)"
-[[ -x $llvm_build/bin/llvm-lit ]] || die "$llvm_build has no bin/llvm-lit"
+found=$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+[[ $found == "$PYTHON_VERSION" ]] || die "$venv uses Python $found, not $PYTHON_VERSION; delete .venv and deps/triton/build, then rerun"
+step "Installing this project's Python packages (requirements.txt)"
+"$venv/bin/pip" install -q -r "$ROOT/requirements.txt"
 
 # ---------------------------------------------------------------- Triton
 if [[ $with_triton == 1 ]]; then
   triton=$DEPS/triton
-  python=${PYTHON:-python$PYTHON_VERSION}
-  command -v "$python" >/dev/null || die "'$python' not found; install Python $PYTHON_VERSION or set PYTHON (or use --no-triton)"
-  found=$("$python" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
-  [[ $found == "$PYTHON_VERSION" ]] || die "'$python' is Python $found; Triton needs $PYTHON_VERSION (set PYTHON)"
-
   if [[ ! -d $triton/.git ]]; then
     step "Fetching Triton $TRITON_TAG"
     git clone -q --depth 1 --branch "$TRITON_TAG" https://github.com/triton-lang/triton.git "$triton"
@@ -118,14 +104,6 @@ if [[ $with_triton == 1 ]]; then
     git -C "$triton" -c advice.detachedHead=false checkout -q "refs/tags/$TRITON_TAG"
   fi
 
-  venv=$ROOT/.venv
-  if [[ ! -x $venv/bin/python ]]; then
-    step "Creating the venv in $venv with $python"
-    "$python" -m venv "$venv"
-  fi
-  found=$("$venv/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
-  [[ $found == "$PYTHON_VERSION" ]] || die "$venv uses Python $found, not $PYTHON_VERSION; delete .venv and deps/triton/build, then rerun"
-
   step "Building Triton (about 30 minutes the first time)"
   "$venv/bin/pip" install -q -r "$triton/python/requirements.txt"
   # Without build isolation the build folder stays usable for incremental
@@ -133,9 +111,72 @@ if [[ $with_triton == 1 ]]; then
   # libtriton's symbols so that plugins (triton-plugin/) can load
   (cd "$triton" && env TRITON_EXT_ENABLED=1 ${jobs:+MAX_JOBS=$jobs} \
       "$venv/bin/pip" install -q -e . --no-build-isolation)
+  llvm_info=$(cat "$triton/cmake/llvm-info.json")
 else
   step "Skipping Triton (--no-triton): the Triton tests will be unsupported"
+  llvm_info=$(curl -fsSL "https://raw.githubusercontent.com/triton-lang/triton/$TRITON_TAG/cmake/llvm-info.json") \
+      || die "could not fetch Triton $TRITON_TAG's cmake/llvm-info.json"
 fi
+
+# ---------------------------------------------------------------- LLVM
+# One LLVM: the one Triton's TRITON_TAG uses, named in its cmake/llvm-info.json
+# (commit, build number and a checksum per platform), prebuilt by Triton's
+# project, as Triton's own build downloads it.
+llvm_hash=$("$py" -c 'import json, sys; print(json.loads(sys.argv[1])["llvm_hash"])' "$llvm_info")
+
+# The commit an LLVM build was made from.
+llvm_revision() {
+  sed -n 's/^#define LLVM_REVISION R"(\(.*\))"$/\1/p' "$1/include/llvm/Support/VCSRevision.h" 2>/dev/null || true
+}
+
+if [[ -n $llvm_build ]]; then
+  [[ -d $llvm_build ]] || die "no such directory: $llvm_build"
+  llvm_build=$(cd "$llvm_build" && pwd)
+  step "Using the LLVM build in $llvm_build"
+else
+  # Triton's names for the platforms it builds LLVM for (get_llvm_system_suffix
+  # in its python/build_helpers.py).
+  case $(uname -s)/$(uname -m) in
+    Darwin/arm64) platform=macos-arm64 ;;
+    Darwin/x86_64) platform=macos-x64 ;;
+    Linux/aarch64|Linux/arm64)
+      if grep -qs '^ID="almalinux"' /etc/os-release; then platform=almalinux-arm64; else platform=ubuntu-arm64; fi ;;
+    Linux/x86_64)
+      glibc=$(getconf GNU_LIBC_VERSION | sed 's/^glibc //')
+      if [[ $(printf '%s\n' "$glibc" 2.29 | sort -V | head -1) == 2.29 ]]; then platform=ubuntu-x64; else platform=almalinux-x64; fi ;;
+    *) die "Triton has no prebuilt LLVM for $(uname -s)/$(uname -m); build LLVM $llvm_hash with MLIR and pass --llvm-build" ;;
+  esac
+  read -r name sha256 < <("$py" -c '
+import json, sys
+info = json.loads(sys.argv[1])
+print("llvm-%s-%s-%d" % (info["llvm_hash"][:8], sys.argv[2], info["build_number"]), info["sha256sum"][sys.argv[2]])' "$llvm_info" "$platform")
+  cached=${TRITON_HOME:-$HOME}/.triton/llvm/$name
+  if [[ -f $cached/lib/cmake/mlir/MLIRConfig.cmake ]]; then
+    llvm_build=$cached
+    step "Using Triton's copy of LLVM ${llvm_hash:0:8} in $llvm_build"
+  else
+    llvm_build=$DEPS/$name
+    if [[ ! -f $llvm_build/lib/cmake/mlir/MLIRConfig.cmake ]]; then
+      url=https://oaitriton.blob.core.windows.net/public/llvm-builds/$name.tar.gz
+      step "Downloading LLVM ${llvm_hash:0:8} ($url)"
+      mkdir -p "$DEPS"
+      curl -fL --retry 3 -o "$DEPS/$name.tar.gz.part" "$url" || die "could not download $url"
+      got=$("$py" -c 'import hashlib, sys; print(hashlib.file_digest(open(sys.argv[1], "rb"), "sha256").hexdigest())' "$DEPS/$name.tar.gz.part")
+      [[ $got == "$sha256" ]] || die "$url: checksum $got, expected $sha256 (from Triton's llvm-info.json)"
+      rm -rf "$llvm_build"
+      tar -xzf "$DEPS/$name.tar.gz.part" -C "$DEPS"
+      rm "$DEPS/$name.tar.gz.part"
+      [[ -d $llvm_build ]] || die "$name.tar.gz did not unpack into $llvm_build"
+    fi
+    step "Using LLVM ${llvm_hash:0:8} in $llvm_build"
+  fi
+fi
+[[ -f $llvm_build/lib/cmake/mlir/MLIRConfig.cmake ]] || die "$llvm_build has no MLIR (lib/cmake/mlir)"
+for tool in FileCheck not; do
+  [[ -x $llvm_build/bin/$tool ]] || die "$llvm_build has no bin/$tool, which the tests use"
+done
+revision=$(llvm_revision "$llvm_build")
+[[ $revision == "$llvm_hash" ]] || die "$llvm_build is LLVM ${revision:-of unknown commit}, but Triton $TRITON_TAG uses $llvm_hash"
 
 # ---------------------------------------------------------------- vLLM
 # vllm-metal publishes ready-built packages for only some Python versions, so
@@ -151,7 +192,6 @@ fi
 # vllm_metal/requirements-torch.txt, the rest in pyproject.toml.
 if [[ $with_vllm == 1 ]]; then
   vllm_metal=$DEPS/vllm-metal
-  py=$venv/bin/python
   if [[ ! -d $vllm_metal/.git ]]; then
     step "Fetching vllm-metal $VLLM_METAL_TAG"
     git clone -q --depth 1 --branch "$VLLM_METAL_TAG" https://github.com/vllm-project/vllm-metal.git "$vllm_metal"
@@ -201,6 +241,6 @@ fi
 step "Building this project in $ROOT/build and running the tests"
 cmake -G Ninja -S "$ROOT" -B "$ROOT/build" \
     -DMLIR_DIR="$llvm_build/lib/cmake/mlir" \
-    -DLLVM_EXTERNAL_LIT="$llvm_build/bin/llvm-lit" \
+    -DLLVM_EXTERNAL_LIT="$venv/bin/lit" \
     -DMLIR_INCLUDE_TESTS=ON
 ninja -C "$ROOT/build" check-applegpu

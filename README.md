@@ -49,21 +49,22 @@ Dependencies go into `deps/` and the Python venv into `.venv/`, both ignored by 
 ```text
 applegpu-dialect/
   build/              this project's build
-  deps/llvm-project/  LLVM sources, only the pinned commit
-  deps/llvm-build/    LLVM and MLIR build (about 12 GB with the sources)
+  deps/llvm-<hash>-<platform>-<build>/
+                      Triton's prebuilt LLVM and MLIR, if ~/.triton has no copy
   deps/triton/        Triton at the pinned tag (about 7 GB)
   deps/vllm-metal/    vllm-metal at the pinned tag, with --with-vllm
-  .venv/              Python venv with Triton installed (editable)
+  .venv/              Python venv: lit, and Triton (editable) unless --no-triton
 ```
 
-- **The first run** builds LLVM and Triton from source, which takes from tens of minutes to a few hours depending on the machine.
-- **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer LLVM or Triton, change [`utils/pins.txt`](utils/pins.txt) and rerun.
-- **`--no-triton`** skips Triton. The Triton tests are then reported as unsupported.
+- **LLVM** is the one Triton uses: the commit in Triton's `cmake/llvm-info.json` for the Triton tag in `utils/pins.txt`, prebuilt by the Triton project. The script uses Triton's own copy in `~/.triton/llvm/` (or `$TRITON_HOME/.triton/llvm/`) when it is there, otherwise downloads it (about 400 MB) and checks it against the checksum in `llvm-info.json`. Nothing of LLVM is built.
+- **The first run** builds Triton from source, which takes tens of minutes depending on the machine.
+- **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer Triton, and with it its LLVM, change [`utils/pins.txt`](utils/pins.txt) and rerun.
+- **`--no-triton`** skips Triton. The Triton tests are then reported as unsupported. Only Triton's `llvm-info.json` is fetched, to find the LLVM.
 - **`--with-vllm`** also installs PyTorch, [vLLM](https://github.com/vllm-project/vllm) and [vllm-metal](https://github.com/vllm-project/vllm-metal) into `.venv`, for running Triton kernels on MPS tensors and, later, vLLM itself. It needs macOS on Apple silicon and the Metal toolchain.
-- **`--llvm-build DIR`** uses an existing LLVM/MLIR build instead of building one in `deps/`.
-- **`--jobs N`** sets the parallel jobs for the LLVM and Triton builds; without it, each uses its own default. With 16 GB of memory or less, use `--jobs 4`: Triton's default, twice the number of cores, can run the machine out of memory. LLVM always links at most two tools at a time for the same reason.
+- **`--llvm-build DIR`** uses an LLVM/MLIR build of your own instead. It must be built from the commit Triton uses, with MLIR; the script checks its `include/llvm/Support/VCSRevision.h`.
+- **`--jobs N`** sets the parallel jobs for the Triton build; without it, Triton uses its own default. With 16 GB of memory or less, use `--jobs 4`: Triton's default, twice the number of cores, can run the machine out of memory.
 - **Python:** the venv uses `python` from `PATH`; set `PYTHON` to use another interpreter of that version. The script stops if the version is wrong.
-- Triton downloads its own prebuilt LLVM into `~/.triton` (or `$TRITON_HOME/.triton`); it never uses `deps/llvm-build`, and `applegpu-opt` never links Triton.
+- `lit` comes from [`requirements.txt`](requirements.txt), installed into `.venv`, because Triton's LLVM does not ship `llvm-lit`.
 
 Tests that cannot run on a machine are reported as unsupported rather than failed: the GPU tests without the Metal toolchain, the Triton tests without Triton.
 
@@ -81,12 +82,12 @@ The `cmake` output includes the lines `Triton build: '...'` and `Triton for test
 
 ## Without the script
 
-To build against an LLVM/MLIR build of your own, at the commit in `utils/pins.txt`:
+To build against an LLVM/MLIR build of your own, from the LLVM commit Triton uses (`llvm_hash` in Triton's `cmake/llvm-info.json`), with `lit` from `pip install -r requirements.txt`:
 
 ```sh
 cmake -G Ninja -S . -B build \
     -DMLIR_DIR=<llvm-build>/lib/cmake/mlir \
-    -DLLVM_EXTERNAL_LIT=<llvm-build>/bin/llvm-lit \
+    -DLLVM_EXTERNAL_LIT=<path to lit> \
     -DMLIR_INCLUDE_TESTS=ON
 ninja -C build check-applegpu
 ```

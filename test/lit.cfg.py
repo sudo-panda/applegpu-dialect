@@ -25,7 +25,13 @@ config.test_exec_root = os.path.join(config.applegpu_obj_root, "test")
 
 llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 
-llvm_config.use_default_substitutions()
+# Only FileCheck and not, which every LLVM build ships (Triton's LLVM has no
+# count). use_default_substitutions() would also require count.
+from lit.llvm.subst import FindTool, ToolSubst
+llvm_config.add_tool_substitutions(
+    [ToolSubst("FileCheck", unresolved="fatal"),
+     ToolSubst(r"\| \bnot\b", command=FindTool("not"), verbatim=True, unresolved="fatal")],
+    [config.llvm_tools_dir])
 
 config.applegpu_tools_dir = os.path.join(config.applegpu_obj_root, "bin")
 

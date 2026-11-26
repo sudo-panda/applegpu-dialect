@@ -2,10 +2,8 @@
 # To move to a newer version, change it here and rerun utils/setup.sh.
 # Format: NAME=value, one per line.
 
-# LLVM commit (from main).
-LLVM_COMMIT=92588800072971828d6a8f2a4a053240813b7ee3
-
-# Triton release tag.
+# Triton release tag. LLVM is the one this Triton uses (its
+# cmake/llvm-info.json), so it has no pin of its own.
 TRITON_TAG=v3.9.0
 
 # Python for the venv. Must be a version vllm-metal allows

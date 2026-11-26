@@ -50,15 +50,14 @@ An out-of-tree MLIR dialect and backend for Apple GPUs. Frontends are lowered in
 
 ## Build and test
 
-`utils/setup.sh` sets up LLVM, Triton and this project, then runs the tests. Versions come from `utils/pins.txt`. Every step is skipped or incremental when already done, so rerunning it after changing a pin updates only what changed. Options: `--no-triton`, `--with-vllm` (PyTorch, vLLM and vllm-metal in `.venv`; macOS only), `--llvm-build DIR` (use an existing LLVM/MLIR build), `--jobs N`, and `PYTHON=<python3.13>` for the venv.
+`utils/setup.sh` sets up LLVM, Triton and this project, then runs the tests. Versions come from `utils/pins.txt`; LLVM is the prebuilt one Triton's `TRITON_TAG` names in its `cmake/llvm-info.json`, reused from Triton's own copy in `~/.triton/llvm/` or downloaded and checked against that file's checksum. With `--no-triton` only that one file of Triton is fetched. Every step is skipped or incremental when already done, so rerunning it after changing a pin updates only what changed. Options: `--no-triton`, `--with-vllm` (PyTorch, vLLM and vllm-metal in `.venv`; macOS only), `--llvm-build DIR` (an LLVM/MLIR build of your own, which must be from that commit; the script reads `include/llvm/Support/VCSRevision.h`), `--jobs N`, and `PYTHON=<python3.13>` for the venv.
 
 ```text
 build/              this project's build (ignored by git)
-deps/llvm-project/  LLVM sources at the pinned commit
-deps/llvm-build/    LLVM and MLIR build
+deps/llvm-<hash>-<platform>-<build>/  Triton's prebuilt LLVM and MLIR, when ~/.triton/llvm has no copy
 deps/triton/        Triton sources and build at the pinned tag
 deps/vllm-metal/    vllm-metal sources at the pinned tag (--with-vllm)
-.venv/              Python venv with Triton installed (editable)
+.venv/              Python venv: lit (requirements.txt), and Triton (editable) unless --no-triton
 ```
 
 After setup, rebuild and test with `ninja -C build check-applegpu`. By hand:
@@ -66,7 +65,7 @@ After setup, rebuild and test with `ninja -C build check-applegpu`. By hand:
 ```sh
 cmake -G Ninja -S . -B build \
     -DMLIR_DIR=<llvm-build>/lib/cmake/mlir \
-    -DLLVM_EXTERNAL_LIT=<llvm-build>/bin/llvm-lit \
+    -DLLVM_EXTERNAL_LIT=$PWD/.venv/bin/lit \
     -DMLIR_INCLUDE_TESTS=ON
 ninja -C build check-applegpu
 ```
@@ -75,7 +74,7 @@ Run one test (build the tools first):
 
 ```sh
 ninja -C build applegpu-opt applegpu-translate
-<llvm-build>/bin/llvm-lit -v build/test/Target/MSL/msl_emit.mlir
+.venv/bin/lit -v build/test/Target/MSL/msl_emit.mlir
 ```
 
 - Without `-DMLIR_INCLUDE_TESTS=ON` the `check-applegpu` target does not exist.
@@ -146,7 +145,7 @@ Upstream MLIR (`mlir/` in LLVM) is the reference for structure: `lib/Target/Cpp`
       *Done when* on a GEMM and on `kernel_unified_attention`, both dots take the Apple layout, and after `remove_layout_conversions` the softmax and the accumulator stay in it. The only conversions left are into the second dot's operand and before the stores.
    5. **One LLVM, and Triton as an option.**
       - `utils/setup.sh` reads `llvm_hash` from Triton's `cmake/llvm-info.json` at `TRITON_TAG` (from `deps/triton` when it is cloned, otherwise fetched from GitHub, so `--no-triton` needs no Triton sources) and downloads Triton's prebuilt LLVM for it, as Triton's own build does, into `deps/llvm-<hash>/`. `--llvm-build DIR` still takes an LLVM built from that commit instead; the script checks the commit. `LLVM_COMMIT` leaves `utils/pins.txt`.
-      - `lit` comes from pip into `.venv` (Triton's LLVM ships `FileCheck` and `not`, but not `lit` or `count`); `test/lit.cfg.py` uses only `FileCheck` and `not`.
+      - `lit` comes from pip into `.venv`, listed in a root `requirements.txt` with every other Python package this project installs itself (Triton's LLVM ships `FileCheck` and `not`, but not `lit` or `count`); `setup.sh` creates `.venv` and installs it even with `--no-triton`. `test/lit.cfg.py` uses only `FileCheck` and `not`.
       - The CMake option `APPLEGPU_ENABLE_TRITON`, off by default. When off: no Triton lookup, no `triton-plugin/`, and lit excludes `test/Triton`, `test/TritonPlugin` and `test/Integration/Triton`. `setup.sh` passes `ON` unless `--no-triton`.
       - The includes that only newer LLVMs have (`ArithDialect.h`, `FuncDialect.h`) change to names both have.
 
