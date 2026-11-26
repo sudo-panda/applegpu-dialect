@@ -2,6 +2,8 @@
 
 config.llvm_tools_dir = lit_config.substitute("@LLVM_TOOLS_DIR@")
 config.applegpu_obj_root = "@APPLEGPU_BINARY_DIR@"
+config.applegpu_enable_triton = @APPLEGPU_ENABLE_TRITON@
+config.lit_path = "@LLVM_EXTERNAL_LIT@"
 config.triton_python = "@APPLEGPU_TRITON_PYTHON@"
 config.triton_opt = "@APPLEGPU_TRITON_OPT@"
 config.triton_tensor_layout = "@APPLEGPU_TRITON_TENSOR_LAYOUT@"

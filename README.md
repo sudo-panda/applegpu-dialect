@@ -59,14 +59,14 @@ applegpu-dialect/
 - **LLVM** is the one Triton uses: the commit in Triton's `cmake/llvm-info.json` for the Triton tag in `utils/pins.txt`, prebuilt by the Triton project. The script uses Triton's own copy in `~/.triton/llvm/` (or `$TRITON_HOME/.triton/llvm/`) when it is there, otherwise downloads it (about 400 MB) and checks it against the checksum in `llvm-info.json`. Nothing of LLVM is built.
 - **The first run** builds Triton from source, which takes tens of minutes depending on the machine.
 - **Rerunning** is fast: every step is skipped or incremental when already done. To move to a newer Triton, and with it its LLVM, change [`utils/pins.txt`](utils/pins.txt) and rerun.
-- **`--no-triton`** skips Triton. The Triton tests are then reported as unsupported. Only Triton's `llvm-info.json` is fetched, to find the LLVM.
+- **`--no-triton`** skips Triton and builds without Triton support: no Triton code is built and no Triton test is run. Only Triton's `llvm-info.json` is fetched, to find the LLVM.
 - **`--with-vllm`** also installs PyTorch, [vLLM](https://github.com/vllm-project/vllm) and [vllm-metal](https://github.com/vllm-project/vllm-metal) into `.venv`, for running Triton kernels on MPS tensors and, later, vLLM itself. It needs macOS on Apple silicon and the Metal toolchain.
 - **`--llvm-build DIR`** uses an LLVM/MLIR build of your own instead. It must be built from the commit Triton uses, with MLIR; the script checks its `include/llvm/Support/VCSRevision.h`.
 - **`--jobs N`** sets the parallel jobs for the Triton build; without it, Triton uses its own default. With 16 GB of memory or less, use `--jobs 4`: Triton's default, twice the number of cores, can run the machine out of memory.
 - **Python:** the venv uses `python` from `PATH`; set `PYTHON` to use another interpreter of that version. The script stops if the version is wrong.
 - `lit` comes from [`requirements.txt`](requirements.txt), installed into `.venv`, because Triton's LLVM does not ship `llvm-lit`.
 
-Tests that cannot run on a machine are reported as unsupported rather than failed: the GPU tests without the Metal toolchain, the Triton tests without Triton.
+Tests that cannot run on a machine are reported as unsupported rather than failed: the GPU tests without the Metal toolchain, and, with Triton support on, the Triton tests when Triton is not found.
 
 **Careful with `git clean -fdx`:** it deletes ignored files, including `deps/` and `.venv/`, and with them hours of builds. Use `git clean -fdx -e deps/ -e .venv/`. Editors that watch files (VS Code, clangd) should exclude `deps/` too.
 
@@ -92,4 +92,4 @@ cmake -G Ninja -S . -B build \
 ninja -C build check-applegpu
 ```
 
-`utils/setup.sh --llvm-build <llvm-build>` does the same and sets up Triton too. Without `-DMLIR_INCLUDE_TESTS=ON` the `check-applegpu` target is not created.
+This builds without Triton support; add `-DAPPLEGPU_ENABLE_TRITON=ON` for the Triton plugin and its tests, which need a Triton build in `deps/triton/build/` (or `-DAPPLEGPU_TRITON_BUILD_DIR=<dir>`). `utils/setup.sh --llvm-build <llvm-build>` does the same and sets up Triton too, with Triton support on unless `--no-triton`. Without `-DMLIR_INCLUDE_TESTS=ON` the `check-applegpu` target is not created.

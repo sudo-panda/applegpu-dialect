@@ -59,6 +59,20 @@ except Exception:
     pass
 
 
+# Triton support (APPLEGPU_ENABLE_TRITON). Without it, lit does not see the
+# Triton test folders (test/Triton, test/TritonPlugin, test/Integration/Triton)
+# at all. "lit -D applegpu_enable_triton=0|1" overrides the build's setting.
+enable_triton = lit_config.params.get("applegpu_enable_triton")
+if enable_triton is not None:
+    config.applegpu_enable_triton = enable_triton not in ("0", "false", "off", "")
+if not config.applegpu_enable_triton:
+    config.excludes = ["Triton", "TritonPlugin"]
+
+# lit itself, for tests of this configuration.
+config.substitutions.append(("%lit", '"%s"' % config.lit_path))
+config.substitutions.append(("%applegpu_test_dir", '"%s"' % config.test_exec_root))
+
+
 # Triton is never linked into this project. Its tests run Triton's own Python
 # and triton-opt as outside programs, and are unsupported without them.
 def triton_available(python, triton_opt):
@@ -72,7 +86,7 @@ def triton_available(python, triton_opt):
         return False
 
 
-if triton_available(config.triton_python, config.triton_opt):
+if config.applegpu_enable_triton and triton_available(config.triton_python, config.triton_opt):
     config.available_features.add("triton")
     config.substitutions.append(("%triton_python", '"%s"' % config.triton_python))
     config.substitutions.append(("%triton_opt", '"%s"' % config.triton_opt))

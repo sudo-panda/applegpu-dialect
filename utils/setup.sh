@@ -18,8 +18,9 @@
 # the script is fast. After changing utils/pins.txt, rerun it to update.
 #
 # Usage: utils/setup.sh [--no-triton] [--with-vllm] [--llvm-build DIR] [--jobs N]
-#   --no-triton        skip Triton; its tests are then reported as unsupported
-#                      (only Triton's llvm-info.json is fetched, to find the LLVM)
+#   --no-triton        skip Triton and build without Triton support: no Triton
+#                      code is built and no Triton test is run (only Triton's
+#                      llvm-info.json is fetched, to find the LLVM)
 #   --with-vllm        also install PyTorch, vLLM and vllm-metal into .venv
 #                      (macOS on Apple silicon, needs Triton and the Metal toolchain)
 #   --llvm-build DIR   use an LLVM/MLIR build of your own instead; it must be
@@ -113,7 +114,7 @@ if [[ $with_triton == 1 ]]; then
       "$venv/bin/pip" install -q -e . --no-build-isolation)
   llvm_info=$(cat "$triton/cmake/llvm-info.json")
 else
-  step "Skipping Triton (--no-triton): the Triton tests will be unsupported"
+  step "Skipping Triton (--no-triton): building without Triton support"
   llvm_info=$(curl -fsSL "https://raw.githubusercontent.com/triton-lang/triton/$TRITON_TAG/cmake/llvm-info.json") \
       || die "could not fetch Triton $TRITON_TAG's cmake/llvm-info.json"
 fi
@@ -242,5 +243,6 @@ step "Building this project in $ROOT/build and running the tests"
 cmake -G Ninja -S "$ROOT" -B "$ROOT/build" \
     -DMLIR_DIR="$llvm_build/lib/cmake/mlir" \
     -DLLVM_EXTERNAL_LIT="$venv/bin/lit" \
-    -DMLIR_INCLUDE_TESTS=ON
+    -DMLIR_INCLUDE_TESTS=ON \
+    -DAPPLEGPU_ENABLE_TRITON=$([[ $with_triton == 1 ]] && echo ON || echo OFF)
 ninja -C "$ROOT/build" check-applegpu
