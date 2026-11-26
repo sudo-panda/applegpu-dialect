@@ -53,6 +53,42 @@ add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(include)
 add_subdirectory(lib)
+
+# Triton support: the Triton plugin in triton-plugin/ and the Triton tests.
+# Off by default; without it nothing of Triton is looked for, built or tested.
+# Nothing here links Triton: its tools run as outside programs, and the plugin
+# is a separate CMake project built with Triton's own LLVM and compiler, which
+# only Triton loads.
+option(APPLEGPU_ENABLE_TRITON "Build the Triton plugin and run the Triton tests" OFF)
+if(APPLEGPU_ENABLE_TRITON)
+  set(APPLEGPU_TRITON_BUILD_DIR "" CACHE PATH
+      "Triton's CMake build folder (deps/triton/build/cmake.<platform>-cpython-<version>)")
+  if(NOT APPLEGPU_TRITON_BUILD_DIR)
+    file(GLOB _applegpu_triton_caches "${APPLEGPU_SOURCE_DIR}/deps/triton/build/*/CMakeCache.txt")
+    if(_applegpu_triton_caches)
+      list(GET _applegpu_triton_caches 0 _applegpu_triton_cache)
+      get_filename_component(APPLEGPU_TRITON_BUILD_DIR "${_applegpu_triton_cache}" DIRECTORY)
+    endif()
+  endif()
+  if(NOT EXISTS "${APPLEGPU_TRITON_BUILD_DIR}/CMakeCache.txt")
+    message(FATAL_ERROR "APPLEGPU_ENABLE_TRITON is ON, but no Triton build was found in "
+                        "deps/triton/build/; set APPLEGPU_TRITON_BUILD_DIR, or build without Triton")
+  endif()
+  include(ExternalProject)
+  set(APPLEGPU_TRITON_PLUGIN
+      "${APPLEGPU_BINARY_DIR}/triton-plugin/libAppleTritonPlugin${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  ExternalProject_Add(apple-triton-plugin
+    SOURCE_DIR "${APPLEGPU_SOURCE_DIR}/triton-plugin"
+    BINARY_DIR "${APPLEGPU_BINARY_DIR}/triton-plugin"
+    CMAKE_ARGS "-DTRITON_BUILD_DIR=${APPLEGPU_TRITON_BUILD_DIR}"
+    BUILD_ALWAYS ON
+    INSTALL_COMMAND ""
+    BUILD_BYPRODUCTS "${APPLEGPU_TRITON_PLUGIN}")
+  message(STATUS "Triton build: '${APPLEGPU_TRITON_BUILD_DIR}'")
+else()
+  message(STATUS "Triton support: off (APPLEGPU_ENABLE_TRITON)")
+endif()
+
 if(MLIR_INCLUDE_TESTS)
   add_subdirectory(test)
 endif()

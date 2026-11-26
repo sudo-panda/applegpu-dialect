@@ -1,0 +1,2 @@
+# Python packages this project installs into .venv itself
+lit

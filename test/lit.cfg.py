@@ -25,7 +25,13 @@ config.test_exec_root = os.path.join(config.applegpu_obj_root, "test")
 
 llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 
-llvm_config.use_default_substitutions()
+# Only FileCheck and not, which every LLVM build ships (Triton's LLVM has no
+# count). use_default_substitutions() would also require count.
+from lit.llvm.subst import FindTool, ToolSubst
+llvm_config.add_tool_substitutions(
+    [ToolSubst("FileCheck", unresolved="fatal"),
+     ToolSubst(r"\| \bnot\b", command=FindTool("not"), verbatim=True, unresolved="fatal")],
+    [config.llvm_tools_dir])
 
 config.applegpu_tools_dir = os.path.join(config.applegpu_obj_root, "bin")
 
@@ -44,6 +50,28 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 config.substitutions.append(
     ("%run_grid", '"%s"' % os.path.join(config.test_exec_root, "runners", "run-grid")))
 
+# The Metal toolchain, for tests that compile and run kernels on the GPU.
+try:
+    subprocess.run(["xcrun", "-sdk", "macosx", "metal", "--version"], check=True,
+                   capture_output=True, timeout=60)
+    config.available_features.add("metal")
+except Exception:
+    pass
+
+
+# Triton support (APPLEGPU_ENABLE_TRITON). Without it, lit does not see the
+# Triton test folders (test/Triton, test/TritonPlugin, test/Integration/Triton)
+# at all. "lit -D applegpu_enable_triton=0|1" overrides the build's setting.
+enable_triton = lit_config.params.get("applegpu_enable_triton")
+if enable_triton is not None:
+    config.applegpu_enable_triton = enable_triton not in ("0", "false", "off", "")
+if not config.applegpu_enable_triton:
+    config.excludes = ["Triton", "TritonPlugin"]
+
+# lit itself, for tests of this configuration.
+config.substitutions.append(("%lit", '"%s"' % config.lit_path))
+config.substitutions.append(("%applegpu_test_dir", '"%s"' % config.test_exec_root))
+
 
 # Triton is never linked into this project. Its tests run Triton's own Python
 # and triton-opt as outside programs, and are unsupported without them.
@@ -58,7 +86,28 @@ def triton_available(python, triton_opt):
         return False
 
 
-if triton_available(config.triton_python, config.triton_opt):
+if config.applegpu_enable_triton and triton_available(config.triton_python, config.triton_opt):
     config.available_features.add("triton")
     config.substitutions.append(("%triton_python", '"%s"' % config.triton_python))
     config.substitutions.append(("%triton_opt", '"%s"' % config.triton_opt))
+    config.substitutions.append(("%triton_tensor_layout", '"%s"' % config.triton_tensor_layout))
+    config.substitutions.append(
+        ("%triton_to_ttgir", '"%s" "%s" --triton-opt "%s"' % (
+            config.triton_python,
+            os.path.join(config.test_source_root, "runners", "triton_to_ttgir.py"),
+            config.triton_opt)))
+
+    # The Apple Triton plugin (triton-plugin/), built with the tests.
+    if config.apple_triton_plugin:
+        config.available_features.add("apple-triton-plugin")
+        config.substitutions.append(("%apple_triton_plugin", '"%s"' % config.apple_triton_plugin))
+
+    # vLLM's sources, for its Triton kernels (utils/setup.sh --with-vllm).
+    result = subprocess.run(
+        [config.triton_python, "-c",
+         "import importlib.util, os; s = importlib.util.find_spec('vllm'); "
+         "print(os.path.dirname(s.origin) if s else '')"],
+        capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        config.available_features.add("vllm")
+        config.substitutions.append(("%vllm_dir", '"%s"' % result.stdout.strip()))
